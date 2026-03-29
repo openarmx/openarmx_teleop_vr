@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!--
+   Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+
+   Copyright (c) 2026 Chengdu Changshu Robot Co., Ltd.
+   https://www.openarmx.com
+
+   This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike
+   4.0 International License (CC BY-NC-SA 4.0).
+
+   To view a copy of this license, visit:
+   http://creativecommons.org/licenses/by-nc-sa/4.0/
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+-->
+<package format="3">
+  <name>openarmx_teleop_bridge_vr</name>
+  <version>0.0.0</version>
+  <description>OpenArmX VR controller pose bridge that receives UDP datagrams and publishes ROS 2 transforms/poses.</description>
+  <maintainer email="li@todo.todo">li</maintainer>
+  <license>CC-BY-NC-SA-4.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
