@@ -4,6 +4,10 @@
 
 `VR 手柄 UDP 数据 -> ROS 2 话题 -> 双臂关节控制命令`
 
+<p align="center">
+  <img src="assets/openarmx_teleop_vr.gif" alt="openarmx_teleop_vr 演示" />
+</p>
+
 > ⚠️ 推荐严格按“机器人底层 -> 桥接节点 -> 遥操作节点”的顺序启动，避免话题未就绪导致控制失败。
 
 ## ✅ 前提条件
@@ -54,16 +58,21 @@ cd <你的工作空间>
 colcon build --packages-select openarmx_teleop_bridge_vr openarmx_teleop_vr
 source install/setup.bash
 
-# 终端 1：机器人底层（示例）
+# 终端 1：机器人控制（真机）
+# 提示：当前版本启动重力补偿后效果更佳，建议保持开启状态。
 ros2 launch openarmx_bringup openarmx.bimanual.launch.py \
-  control_mode:=mit \
-  robot_controller:=forward_position_controller \
-  use_fake_hardware:=false
+    right_can_interface:=can0 \
+    left_can_interface:=can1 \
+    control_mode:=mit \
+    robot_controller:=forward_position_controller \
+    enable_forward_effort:=true
+    use_fake_hardware:=false
 
 # 终端 2：VR 桥接
 ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
 
 # 终端 3：VR 遥操作执行节点
+# 当前使用的 openarmx_arm_driver 库必须是 1.3.3 版本即以上
 ros2 launch openarmx_teleop_vr teleop_vr.launch.py
 ```
 
@@ -89,3 +98,36 @@ ros2 launch openarmx_teleop_vr teleop_vr.launch.py
 - 桥接包中文说明：`openarmx_teleop_bridge_vr/README_CN.md`
 - 遥操作包中文说明：`openarmx_teleop_vr/README_CN.md`
 - 遥操作 launch 文件：`openarmx_teleop_vr/launch/teleop_vr.launch.py`
+
+
+## 10. 许可证
+
+本作品采用知识共享 署名-非商业性使用-相同方式共享 4.0 国际许可协议（CC BY-NC-SA 4.0）进行许可。
+
+版权所有 (c) 2026 成都长数机器人有限公司 (Chengdu Changshu Robot Co., Ltd.)
+
+详情请参阅项目 LICENSE 文件或访问：<http://creativecommons.org/licenses/by-nc-sa/4.0/>
+
+## 11. 作者
+
+- **Zhang Li** (张力)
+- 公司：Chengdu Changshu Robot Co., Ltd. (成都长数机器人有限公司)
+- 网站：<https://openarmx.com/>
+
+## 12. 版本
+
+**当前版本**：3.0.0
+
+## 13. 联系我们
+
+### 成都长数机器人有限公司
+
+**Chengdu Changshu Robotics Co., Ltd.**
+
+| 联系方式 | 信息 |
+|---------|------|
+| 邮箱 | openarmrobot@gmail.com |
+| 电话/微信 | +86-17746530375 |
+| 官网 | <https://openarmx.com/> |
+| 地址 | 天津经济技术开发区西区新业八街11号华诚机械厂 |
+| 联系人 | 王先生 |

@@ -1,0 +1,77 @@
+openarmx_teleop_vr_node:
+  ros__parameters:
+    # URDF path is injected by launch by default; leave empty for portable deployments.
+    urdf_path: ""
+
+    # Control parameters
+    control_rate: 100.0  # Hz
+    grip_threshold: 0.5  # Grip value to activate control
+    max_step_deg_joint1: 4.0
+    max_step_deg_joint2: 4.0
+    max_step_deg_joint3: 4.0
+    max_step_deg_joint4: 4.0
+    max_step_deg_joint5: 4.0
+    max_step_deg_joint6: 4.0
+    max_step_deg_joint7: 4.0
+
+    # fast_max_step_deg_joint1: 10.0
+    # fast_max_step_deg_joint2: 10.0
+    # fast_max_step_deg_joint3: 10.0
+    # fast_max_step_deg_joint4: 10.0
+    # fast_max_step_deg_joint5: 10.0
+    # fast_max_step_deg_joint6: 10.0
+    # fast_max_step_deg_joint7: 10.0
+    fast_max_step_deg_joint1: 20.0
+    fast_max_step_deg_joint2: 16.0
+    fast_max_step_deg_joint3: 12.0
+    fast_max_step_deg_joint4: 12.0
+    fast_max_step_deg_joint5: 14.0
+    fast_max_step_deg_joint6: 8.0
+    fast_max_step_deg_joint7: 12.0
+
+    # step_limit_enable_threshold_deg_joint1: 4.0
+    # step_limit_enable_threshold_deg_joint2: 4.0
+    # step_limit_enable_threshold_deg_joint3: 4.0
+    # step_limit_enable_threshold_deg_joint4: 5.0
+    # step_limit_enable_threshold_deg_joint5: 9.0
+    # step_limit_enable_threshold_deg_joint6: 4.0
+    # step_limit_enable_threshold_deg_joint7: 5.0
+
+    step_limit_enable_threshold_deg_joint1: 20.0
+    step_limit_enable_threshold_deg_joint2: 16.0
+    step_limit_enable_threshold_deg_joint3: 12.0
+    step_limit_enable_threshold_deg_joint4: 12.0
+    step_limit_enable_threshold_deg_joint5: 14.0
+    step_limit_enable_threshold_deg_joint6: 8.0
+    step_limit_enable_threshold_deg_joint7: 12.0
+    button_motion_step_deg: 0.5  # Independent compensation step for button-triggered motions
+    button_motion_done_tolerance_deg: 1.0  # Finish tolerance for button-triggered motions
+
+    # VR input topics
+    vr_head_topic: "/vr/head/pose"
+    vr_left_pose_topic: "/vr/left/pose_absolute"
+    vr_right_pose_topic: "/vr/right/pose_absolute"
+    vr_left_grip_topic: "/vr/left/grip"
+    vr_right_grip_topic: "/vr/right/grip"
+    vr_left_trigger_topic: "/vr/left/trigger"
+    vr_right_trigger_topic: "/vr/right/trigger"
+    vr_calibrate_topic: "/vr/calibrate_done"
+    vr_control_mode_topic: "/vr/control_mode"
+    vr_rate_topic: "/vr/rate"
+    button_b_topic: "/pico_right_controller/button_b"
+    button_y_topic: "/pico_left_controller/button_y"
+    absolute_button_b_topic: "/vr/right/button_b"
+    absolute_button_x_topic: "/vr/left/button_x"
+    absolute_button_y_topic: "/vr/left/button_y"
+
+    # Command output topics
+    left_cmd_topic: "/left_forward_position_controller/commands"
+    right_cmd_topic: "/right_forward_position_controller/commands"
+
+    # Calibration parameters
+    body_anchor_offset: [0.0, -0.18, 0.08]  # Offset from head to body anchor
+    position_scale_xyz: [1.0, 1.0, 0.9]  # Scale factors for x, y, z
+    left_axis_matrix: [0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    right_axis_matrix: [0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    left_orientation_matrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    right_orientation_matrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]

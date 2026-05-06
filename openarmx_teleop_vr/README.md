@@ -1,56 +1,71 @@
-# openarmx_teleop_vr User Guide (English)
+# openarmx_teleop_vr User Guide
 
 ## 1. Package Positioning
 
-`openarmx_teleop_vr` is the VR teleoperation execution node of OpenArmX.
-This node subscribes to ROS topics such as VR controller pose, trigger, and grip, and publishes joint commands to dual-arm controllers, enabling online teleoperation from "VR controllers -> robot dual arms".
+`openarmx_teleop_vr` is the ROS 2 VR teleoperation execution node for OpenArmX.
 
-For the illustrated tutorial on VR device teleoperation, please visit the official documentation: <http://docs.openarmx.com>
+This node subscribes to controller pose, headset pose, grip, trigger, button, and speed-rate topics published by the Pico/VR bridge node, reads robot `/joint_states`, and calls the IK logic inside `openarmx_arm_driver` to compute target joint angles for both arms. It then publishes joint position commands to the left and right `forward_position_controller`.
+
+The overall goal is:
+
+```text
+Pico/VR controllers -> ROS 2 bridge topics -> openarmx_teleop_vr_node -> openarmx_arm_driver IK -> dual-arm controllers
+```
+
+For illustrated tutorials about VR teleoperation, visit the official documentation: <http://docs.openarmx.com>
 
 ## 2. Package Structure
 
+Current package structure:
+
 ```text
 openarmx_teleop_vr/
-├── README_CN.md
 ├── README.md
+├── config/
+│   └── teleop_params.yaml          # Teleoperation parameter config
 ├── launch/
 │   └── teleop_vr.launch.py         # Launch entry
 ├── openarmx_teleop_vr/
+│   ├── __init__.py
 │   └── openarmx_teleop_vr_node.py  # Main node
 ├── package.xml
+├── resource/
+│   └── openarmx_teleop_vr
+├── setup.cfg
 └── setup.py
 ```
 
 ## 3. System Pipeline
 
-The overall data flow is as follows:
+Typical runtime pipeline:
 
 1. The VR device publishes controller data through the bridge package (`openarmx_teleop_bridge_vr`).
 2. This node subscribes to input topics and computes joint control commands for the left and right arms.
 3. Control commands are published to `forward_position_controller` to drive simulation or real hardware.
 
-## 4. Main Functions
+## 4. Main Features
 
-1. Use dual-controller poses to control dual-arm end-effector motion.
-2. Use index triggers to control opening and closing of the left and right grippers.
-3. Use grip as an enable switch (deadman switch) to reduce accidental operation risk.
-4. Supports speed mode switching (slow/fast) to reduce safety risks caused by large jumps.
-5. Optionally publishes visualization TF for RViz debugging.
+1. Supports independent left/right controller mapping to left/right arm end-effector motion.
+2. Supports relative-position-mode VR control input.
+3. Uses grip as a manual-control enable switch to reduce accidental operations.
+4. Uses trigger values to control left and right gripper open/close.
+5. Supports two joint step-limit modes: slow and fast.
+6. Supports button-triggered go-home and hands-up actions.
 
 ## 5. Quick Start
 
 ### Prerequisites
 
-1. The robot low-level stack (simulation or real hardware) is running, and `forward_position_controller` is available.
-2. The VR bridge node is running and continuously publishing controller topics.
-3. `openarmx_arm_driver` can be imported in the runtime environment (required dependency for this node).
+1. Robot backend (simulation or real hardware) is running, and `forward_position_controller` is available.
+2. VR bridge node is running and continuously publishing controller topics.
+3. The runtime environment can import `openarmx_arm_driver` (required dependency).
 
-### Typical Startup Order
+### Typical Startup Sequence
 
-1. Terminal 1: Start the robot
+1. Terminal 1: start robot backend
 
 ```bash
-cd <your workspace>
+cd <your_workspace>
 source install/setup.bash
 
 # Simulation mode
@@ -59,7 +74,7 @@ ros2 launch openarmx_bringup openarmx.bimanual.launch.py \
   robot_controller:=forward_position_controller \
   use_fake_hardware:=true
 
-# Real hardware mode: bring up CAN channels first
+# Real hardware mode: start CAN interfaces first
 sudo ip link set can0 down
 sudo ip link set can0 type can bitrate 1000000
 sudo ip link set can0 up
@@ -69,24 +84,27 @@ sudo ip link set can1 type can bitrate 1000000
 sudo ip link set can1 up
 
 ros2 launch openarmx_bringup openarmx.bimanual.launch.py \
-  control_mode:=mit \
-  robot_controller:=forward_position_controller \
-  use_fake_hardware:=false
+    right_can_interface:=can0 \
+    left_can_interface:=can1 \
+    control_mode:=mit \
+    robot_controller:=forward_position_controller \
+    enable_forward_effort:=true
+    use_fake_hardware:=false
 ```
 
-2. Terminal 2: Start VR bridge
+2. Terminal 2: start Pico/VR bridge node
 
 ```bash
-cd <your workspace>
+cd ~/openarmx_ws
 source install/setup.bash
 
 ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
 ```
 
-3. Terminal 3: Start this package
+3. Terminal 3: start VR teleoperation node
 
 ```bash
-cd <your workspace>
+cd ~/openarmx_ws
 source install/setup.bash
 
 ros2 launch openarmx_teleop_vr teleop_vr.launch.py
@@ -94,121 +112,154 @@ ros2 launch openarmx_teleop_vr teleop_vr.launch.py
 
 ## 6. Input and Output Topics
 
-### Input Topics (Default)
+### Relative-Mode Input Topics (default)
 
 | Topic | Type | Description |
-|------|------|------|
-| `/vr_left_controller/pose` | `geometry_msgs/PoseStamped` | Left controller pose input |
-| `/vr_right_controller/pose` | `geometry_msgs/PoseStamped` | Right controller pose input |
-| `/vr_left_controller/trigger` | `std_msgs/Float32` | Left trigger (gripper) |
-| `/vr_right_controller/trigger` | `std_msgs/Float32` | Right trigger (gripper) |
-| `/vr_left_controller/grip` | `std_msgs/Float32` | Left grip (enable) |
-| `/vr_right_controller/grip` | `std_msgs/Float32` | Right grip (enable) |
-| `/vr_right_controller/rate` | `std_msgs/Float32` | Speed mode input (0.1/1.0) |
-| `/joint_states` | `sensor_msgs/JointState` | Current joint state feedback |
+|------|------|-------------|
+| `/pico_left_controller/pose` | `geometry_msgs/PoseStamped` | Left controller relative pose |
+| `/pico_right_controller/pose` | `geometry_msgs/PoseStamped` | Right controller relative pose |
+| `/pico_left_controller/grip` | `std_msgs/Float32` | Left grip, enables left-arm control |
+| `/pico_right_controller/grip` | `std_msgs/Float32` | Right grip, enables right-arm control |
+| `/pico_left_controller/trigger` | `std_msgs/Float32` | Left trigger, controls left gripper |
+| `/pico_right_controller/trigger` | `std_msgs/Float32` | Right trigger, controls right gripper |
+| `/pico_left_controller/rate` | `std_msgs/Float32` | Relative-mode speed rate |
+| `/pico_right_controller/rate` | `std_msgs/Float32` | Relative-mode speed rate |
+| `/pico_right_controller/button_b` | `std_msgs/Bool` | Button B, triggers go-home action |
+| `/pico_left_controller/button_y` | `std_msgs/Bool` | Button Y, triggers hands-up action |
 
-### Output Topics (Default)
+### Robot State Input
 
 | Topic | Type | Description |
-|------|------|------|
-| `/left_forward_position_controller/commands` | `std_msgs/Float64MultiArray` | Left arm joint commands |
-| `/right_forward_position_controller/commands` | `std_msgs/Float64MultiArray` | Right arm joint commands |
+|------|------|-------------|
+| `/joint_states` | `sensor_msgs/JointState` | Current robot joint-angle feedback |
 
-## 7. Common Parameters (Application Layer)
+### Output Topics (default)
+
+| Topic | Type | Description |
+|------|------|-------------|
+| `/left_forward_position_controller/commands` | `std_msgs/Float64MultiArray` | Left arm 7-joint position commands + left gripper command |
+| `/right_forward_position_controller/commands` | `std_msgs/Float64MultiArray` | Right arm 7-joint position commands + right gripper command |
+
+## 7. Common Parameters
+
+Parameters are defined in `config/teleop_params.yaml`, and can also be overridden by ROS 2 launch arguments.
 
 | Parameter | Default | Description |
-|------|--------|------|
-| `control_rate` | `100.0` | Control loop frequency (Hz) |
-| `rate_topic` | `/vr_right_controller/rate` | Speed mode input topic |
-| `slow_max_step_deg` | `1.0` | Maximum joint step per cycle in slow mode |
-| `fast_max_step_deg` | `12.0` | Maximum joint step per cycle in fast mode |
-| `ik_iterations` | `3` | Inverse kinematics iteration count per cycle |
+|-----------|---------|-------------|
+| `urdf_path` | Injected by launch | Robot URDF path |
+| `control_rate` | `60.0` | Control loop frequency (Hz) |
 | `grip_threshold` | `0.5` | Grip enable threshold |
-| `left_grip_topic` | `/vr_left_controller/grip` | Left grip topic |
-| `right_grip_topic` | `/vr_right_controller/grip` | Right grip topic |
-| `publish_visualization_tf` | `true` | Whether to publish visualization TF |
-| `print_performance` | `false` | Whether to print performance logs |
-| `use_xacro` | `true` | Whether to generate URDF from xacro at runtime |
-| `use_link4_ext` | `true` | Whether to enable extended constraint frame configuration |
-| `constraint_mode` | `joint` | Constraint mode: `joint` or `link` |
+| `max_step_deg` | `2.0` | Max joint step per cycle in slow mode |
+| `fast_max_step_deg` | `15.0` | Max joint step per cycle in fast mode |
+| `step_limit_enable_threshold_deg` | `8.0` | Enable step-limit when target-current error exceeds this value |
+| `button_motion_step_deg` | `1.0` | Max joint step per cycle for button actions |
+| `button_motion_done_tolerance_deg` | `1.0` | Target-reached tolerance for button actions |
+| `body_anchor_offset` | `[0.0, -0.18, 0.08]` | Offset from headset to body reference point |
+| `position_scale_xyz` | `[1.0, 1.0, 0.9]` | Position mapping scale factors |
+| `left_axis_matrix` | See config file | Left-controller position axis mapping matrix |
+| `right_axis_matrix` | See config file | Right-controller position axis mapping matrix |
+| `left_orientation_matrix` | See config file | Left-controller orientation mapping matrix |
+| `right_orientation_matrix` | See config file | Right-controller orientation mapping matrix |
 
-Example:
+Common topic parameters are also defined in the config file, for example:
+
+```yaml
+left_pose_topic: "/pico_left_controller/pose"
+right_pose_topic: "/pico_right_controller/pose"
+left_cmd_topic: "/left_forward_position_controller/commands"
+right_cmd_topic: "/right_forward_position_controller/commands"
+```
+
+## 8. Operation Notes
+
+### Grip
+
+When grip value is greater than `grip_threshold`, the corresponding arm enters manual control. After grip is released, that arm no longer follows controller pose, and the gripper command keeps its current state.
+
+### Trigger
+
+Trigger value is mapped to gripper open/close command. Left and right triggers control left and right grippers respectively.
+
+### Speed Rate
+
+When `rate` topic value is close to `1.0`, fast mode is enabled; otherwise slow mode is used. Fast mode uses `fast_max_step_deg`, and slow mode uses `max_step_deg`.
+
+### Button B
+
+Button B triggers dual-arm go-home action with a 14-dimensional zero joint target. This action uses independent speed limit `button_motion_step_deg`.
+
+### Button Y
+
+Button Y triggers hands-up action. It currently mainly raises the 4th joint of both arms and is constrained by joint upper limits.
+
+## 9. FAQ
+
+1. Node reports `urdf_path parameter is required` at startup
+
+Check whether launch passes `urdf_path` correctly, or manually specify an absolute URDF path:
 
 ```bash
 ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
-  constraint_mode:=link
+  urdf_path:=/absolute/path/to/openarmx_robot.urdf
 ```
 
-Note: The robotic arm may jitter when approaching or exceeding the workspace boundary. This is usually because the solver is still attempting to approach an unreachable target. For safety, avoid extreme-pose operations.
+2. Error: `openarmx_arm_driver` import failed
 
-`constraint_mode` description:
+It means the current Python environment is missing the low-level driver, or it is not correctly installed in the current user environment. Install `openarmx_arm_driver` first, and ensure `source install/setup.bash` has been executed in your terminal.
 
-1. `joint` (default): faster response, but inverse kinematics has no additional pose constraints, so non-intuitive joint poses may occur.
-2. `link`: introduces additional constraints on the 2nd and 4th joints, making the arm posture closer to the robot center and better suited for operations in the chest-front workspace.
+3. Robot arm does not move after node startup
 
-Please switch between the two modes according to task requirements.
-
-## 8. FAQ
-
-1. Wrist joint response is relatively slow
-
-Default parameters set relatively strict joint step limits to reduce risks from abrupt arm motion. You can moderately increase `slow_max_step_deg` and `fast_max_step_deg` to improve responsiveness, but you need to assess safety risks yourself.
-
-2. Node starts but the robotic arm does not move
-
-First check whether the bridge topics have data:
+First verify both `/joint_states` and controller topics have data:
 
 ```bash
-ros2 topic echo /vr_left_controller/pose
-ros2 topic echo /vr_right_controller/pose
+ros2 topic echo /joint_states
+ros2 topic echo /pico_left_controller/pose
+ros2 topic echo /pico_right_controller/pose
 ```
 
-3. Controller data exists but there are no control commands
+4. Controller data exists but no control commands
 
-Check the controller command topics:
+Check whether grip exceeds threshold, and inspect control command topics:
 
 ```bash
 ros2 topic echo /left_forward_position_controller/commands
 ros2 topic echo /right_forward_position_controller/commands
 ```
 
-4. Error: `openarmx_arm_driver` import failed
+5. Robot arm jitters or jumps
 
-This means the current environment is missing this Python dependency. Please install it first and ensure the environment has been sourced correctly.
+First reduce `max_step_deg` or `fast_max_step_deg`, and confirm `/joint_states` is continuous and stable. Low Pico controller battery or tracking loss may also cause abnormal input poses.
 
-5. Gripper does not respond
+6. Gripper does not respond
 
-Please check trigger topic data and whether the grip threshold (`grip_threshold`) matches your actual operation habits.
+Check whether trigger topics have data, and confirm the corresponding arm grip is enabled.
 
-## License
+## 10. License
 
 This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0).
 
 Copyright (c) 2026 Chengdu Changshu Robot Co., Ltd.
 
-For details, please refer to [LICENSE_CN.md](LICENSE) or visit: http://creativecommons.org/licenses/by-nc-sa/4.0/
+For details, see the project LICENSE file or visit: <http://creativecommons.org/licenses/by-nc-sa/4.0/>
 
-## Author
+## 11. Author
 
-- **Zhang Li** (张力)
-- Company: Chengdu Changshu Robot Co., Ltd. (成都长数机器人有限公司)
-- Website: https://openarmx.com/
+- **Zhang Li**
+- Company: Chengdu Changshu Robot Co., Ltd.
+- Website: <https://openarmx.com/>
 
-## Version
+## 12. Version
 
-**Current Version**: 1.0.0
+**Current version**: 3.0.0
 
----
-
-## 📞 Contact Us
+## 13. Contact Us
 
 ### Chengdu Changshu Robot Co., Ltd.
-**Chengdu Changshu Robotics Co., Ltd.**
 
-| Contact Method | Information |
-|---------|------|
-| 📧 Email | openarmrobot@gmail.com |
-| 📱 Phone/WeChat | +86-17746530375 |
-| 🌐 Official Website | <https://openarmx.com/> |
-| 📍 Address | Huacheng Machinery Factory, No. 11 Xinye 8th Street, West Area, Tianjin Economic-Technological Development Area |
-| 👤 Contact Person | Mr. Wang |
+| Contact | Information |
+|---------|-------------|
+| Email | openarmrobot@gmail.com |
+| Phone / WeChat | +86-17746530375 |
+| Website | <https://openarmx.com/> |
+| Address | Huacheng Machinery Factory, No. 11 Xinye 8th Street, West Zone, Tianjin Economic-Technological Development Area |
+| Contact Person | Mr. Wang |

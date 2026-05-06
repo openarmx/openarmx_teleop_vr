@@ -4,6 +4,10 @@ This directory is the OpenArmX **VR teleoperation pipeline**. It contains two RO
 
 `VR controller UDP data -> ROS 2 topics -> dual-arm joint control commands`
 
+<p align="center">
+  <img src="assets/openarmx_teleop_vr.gif" alt="openarmx_teleop_vr demo" />
+</p>
+
 > ⚠️ It is strongly recommended to start in this order: "robot base -> bridge node -> teleop node". This avoids failures caused by unavailable topics.
 
 ## ✅ Prerequisite
@@ -54,11 +58,15 @@ cd <your_workspace>
 colcon build --packages-select openarmx_teleop_bridge_vr openarmx_teleop_vr
 source install/setup.bash
 
-# Terminal 1: robot base (example)
+# Terminal 1: robot base (real robot)
+# Note: In the current version, performance is better with gravity compensation enabled; keeping it on is recommended.
 ros2 launch openarmx_bringup openarmx.bimanual.launch.py \
-  control_mode:=mit \
-  robot_controller:=forward_position_controller \
-  use_fake_hardware:=false
+    right_can_interface:=can0 \
+    left_can_interface:=can1 \
+    control_mode:=mit \
+    robot_controller:=forward_position_controller \
+    enable_forward_effort:=true
+    use_fake_hardware:=false
 
 # Terminal 2: VR bridge
 ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
@@ -89,3 +97,33 @@ ros2 launch openarmx_teleop_vr teleop_vr.launch.py
 - Bridge package CN doc: `openarmx_teleop_bridge_vr/README_CN.md`
 - Teleop package CN doc: `openarmx_teleop_vr/README_CN.md`
 - Teleop launch file: `openarmx_teleop_vr/launch/teleop_vr.launch.py`
+
+## 10. License
+
+This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0).
+
+Copyright (c) 2026 Chengdu Changshu Robot Co., Ltd.
+
+For details, see the project LICENSE file or visit: <http://creativecommons.org/licenses/by-nc-sa/4.0/>
+
+## 11. Author
+
+- **Zhang Li**
+- Company: Chengdu Changshu Robot Co., Ltd.
+- Website: <https://openarmx.com/>
+
+## 12. Version
+
+**Current version**: 3.0.0
+
+## 13. Contact Us
+
+### Chengdu Changshu Robot Co., Ltd.
+
+| Contact | Information |
+|---------|-------------|
+| Email | openarmrobot@gmail.com |
+| Phone / WeChat | +86-17746530375 |
+| Website | <https://openarmx.com/> |
+| Address | Huacheng Machinery Factory, No. 11 Xinye 8th Street, West Zone, Tianjin Economic-Technological Development Area |
+| Contact Person | Mr. Wang |

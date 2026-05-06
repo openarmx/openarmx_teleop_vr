@@ -2,17 +2,17 @@
 
 ## 1. 这个包是做什么的
 
-`openarmx_teleop_bridge_vr` 是一个 ROS 2 桥接包。
-它接收 VR 控制器通过 UDP 发送的数据，并发布为 ROS 2 话题（可选发布 TF），方便下游遥操作或控制节点直接使用。
+`openarmx_teleop_bridge_vr` 是一个 ROS 2 桥接包。  
+它接收 Pico VR 控制器通过 UDP 发送的数据，并发布为 ROS 2 话题（可选发布 TF），方便下游遥操作或控制节点直接使用。
 
-一句话：**把 VR 手柄数据接进 ROS 2。**
+一句话：**把 Pico 手柄数据接进 ROS 2。**
 
 ## 2. 包结构
 
 ```text
 openarmx_teleop_bridge_vr/
-├── README_CN.md
-├── README.md
+├── README_CN.md   
+├── README.md                                  
 ├── CMakeLists.txt
 ├── package.xml
 └── src/
@@ -21,8 +21,8 @@ openarmx_teleop_bridge_vr/
 
 ## 3. 应用层数据流
 
-VR/OpenXR 发送端
--> UDP 数据（默认端口 `5100`）
+Pico/OpenXR 发送端  
+-> UDP 数据（默认端口 `5100`）  
 -> `openarmx_teleop_bridge_vr_node`  
 -> ROS 2 话题（pose/trigger/grip/button/rate）  
 -> 你的 teleop 或控制节点
@@ -46,26 +46,26 @@ ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
 ### 检查是否有数据
 
 ```bash
-ros2 topic echo /vr_left_controller/pose
-ros2 topic echo /vr_right_controller/pose
+ros2 topic echo /pico_left_controller/pose
+ros2 topic echo /pico_right_controller/pose
 ```
 
 ## 5. 默认发布的话题
 
 | 序号 | 类型 | 话题名 |
 |------|------|--------|
-| 1 | 位姿 | `/vr_left_controller/pose` |
-| 2 | 位姿 | `/vr_right_controller/pose` |
-| 3 | 扳机 | `/vr_left_controller/trigger` |
-| 4 | 扳机 | `/vr_right_controller/trigger` |
-| 5 | 握把 | `/vr_left_controller/grip` |
-| 6 | 握把 | `/vr_right_controller/grip` |
-| 7 | 倍率 | `/vr_left_controller/rate` |
-| 8 | 倍率 | `/vr_right_controller/rate` |
-| 9 | 按键 | `vr_right_controller/button_a` |
-| 10 | 按键 | `vr_right_controller/button_b` |
-| 11 | 按键 | `vr_left_controller/button_x` |
-| 12 | 按键 | `vr_left_controller/button_y` |
+| 1 | 位姿 | `/pico_left_controller/pose` |
+| 2 | 位姿 | `/pico_right_controller/pose` |
+| 3 | 扳机 | `/pico_left_controller/trigger` |
+| 4 | 扳机 | `/pico_right_controller/trigger` |
+| 5 | 握把 | `/pico_left_controller/grip` |
+| 6 | 握把 | `/pico_right_controller/grip` |
+| 7 | 倍率 | `/pico_left_controller/rate` |
+| 8 | 倍率 | `/pico_right_controller/rate` |
+| 9 | 按键 | `pico_right_controller/button_a` |
+| 10 | 按键 | `pico_right_controller/button_b` |
+| 11 | 按键 | `pico_left_controller/button_x` |
+| 12 | 按键 | `pico_left_controller/button_y` |
 
 ## 6. 常用参数（应用层）
 
@@ -74,7 +74,7 @@ ros2 topic echo /vr_right_controller/pose
 | `listen_address` | 监听地址 | `0.0.0.0` |
 | `listen_port` | 监听端口 | `5100` |
 | `publish_tf` | 是否发布 TF | `false` |
-| `frame_id` | 发布姿态时的父坐标系 | `vr_hmd` |
+| `frame_id` | 发布姿态时的父坐标系 | `pico_hmd` |
 
 示例（修改端口并开启 TF）：
 
