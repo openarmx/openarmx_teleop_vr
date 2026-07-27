@@ -88,50 +88,50 @@ class PoseBridgeNode : public rclcpp::Node {
     child_frame_ids_[RIGHT] =
         declare_parameter<std::string>("right_child_frame_id", "pico_right_controller");
     pose_topics_[LEFT] =
-        declare_parameter<std::string>("left_pose_topic", "/pico_left_controller/pose");
+        declare_parameter<std::string>("left_pose_topic", "pico_left_controller/pose");
     pose_topics_[RIGHT] =
-        declare_parameter<std::string>("right_pose_topic", "/pico_right_controller/pose");
+        declare_parameter<std::string>("right_pose_topic", "pico_right_controller/pose");
     absolute_pose_topics_[LEFT] = declare_parameter<std::string>(
-        "left_absolute_pose_topic", "/vr/left/pose_absolute");
+        "left_absolute_pose_topic", "vr/left/pose_absolute");
     absolute_pose_topics_[RIGHT] = declare_parameter<std::string>(
-        "right_absolute_pose_topic", "/vr/right/pose_absolute");
-    head_pose_topic_ = declare_parameter<std::string>("head_pose_topic", "/vr/head/pose");
+        "right_absolute_pose_topic", "vr/right/pose_absolute");
+    head_pose_topic_ = declare_parameter<std::string>("head_pose_topic", "vr/head/pose");
     control_mode_topic_ = declare_parameter<std::string>(
-        "control_mode_topic", "/vr/control_mode");
+        "control_mode_topic", "vr/control_mode");
     calibrate_done_topic_ = declare_parameter<std::string>(
-        "calibrate_done_topic", "/vr/calibrate_done");
+        "calibrate_done_topic", "vr/calibrate_done");
     absolute_trigger_topics_[LEFT] = declare_parameter<std::string>(
-        "left_absolute_trigger_topic", "/vr/left/trigger");
+        "left_absolute_trigger_topic", "vr/left/trigger");
     absolute_trigger_topics_[RIGHT] = declare_parameter<std::string>(
-        "right_absolute_trigger_topic", "/vr/right/trigger");
+        "right_absolute_trigger_topic", "vr/right/trigger");
     absolute_grip_topics_[LEFT] = declare_parameter<std::string>(
-        "left_absolute_grip_topic", "/vr/left/grip");
+        "left_absolute_grip_topic", "vr/left/grip");
     absolute_grip_topics_[RIGHT] = declare_parameter<std::string>(
-        "right_absolute_grip_topic", "/vr/right/grip");
+        "right_absolute_grip_topic", "vr/right/grip");
     absolute_button_a_topic_ = declare_parameter<std::string>(
-        "absolute_button_a_topic", "/vr/right/button_a");
+        "absolute_button_a_topic", "vr/right/button_a");
     absolute_button_b_topic_ = declare_parameter<std::string>(
-        "absolute_button_b_topic", "/vr/right/button_b");
+        "absolute_button_b_topic", "vr/right/button_b");
     absolute_button_x_topic_ = declare_parameter<std::string>(
-        "absolute_button_x_topic", "/vr/left/button_x");
+        "absolute_button_x_topic", "vr/left/button_x");
     absolute_button_y_topic_ = declare_parameter<std::string>(
-        "absolute_button_y_topic", "/vr/left/button_y");
+        "absolute_button_y_topic", "vr/left/button_y");
     absolute_rate_topic_ = declare_parameter<std::string>(
-        "absolute_rate_topic", "/vr/rate");
+        "absolute_rate_topic", "vr/rate");
     trigger_topics_[LEFT] =
-        declare_parameter<std::string>("left_trigger_topic", "/pico_left_controller/trigger");
+        declare_parameter<std::string>("left_trigger_topic", "pico_left_controller/trigger");
     trigger_topics_[RIGHT] =
-        declare_parameter<std::string>("right_trigger_topic", "/pico_right_controller/trigger");
-    grip_topics_[LEFT] =  declare_parameter<std::string>("left_grip_topic", "/pico_left_controller/grip");
-    grip_topics_[RIGHT] = declare_parameter<std::string>("right_grip_topic", "/pico_right_controller/grip");
+        declare_parameter<std::string>("right_trigger_topic", "pico_right_controller/trigger");
+    grip_topics_[LEFT] =  declare_parameter<std::string>("left_grip_topic", "pico_left_controller/grip");
+    grip_topics_[RIGHT] = declare_parameter<std::string>("right_grip_topic", "pico_right_controller/grip");
     button_a_topic_ = declare_parameter<std::string>("button_a_topic", "pico_right_controller/button_a");
     button_b_topic_ = declare_parameter<std::string>("button_b_topic", "pico_right_controller/button_b");
     button_x_topic_ = declare_parameter<std::string>("button_x_topic", "pico_left_controller/button_x");
     button_y_topic_ = declare_parameter<std::string>("button_y_topic", "pico_left_controller/button_y");
-    // Use absolute topic names by default so they appear as /pico_* instead of being prefixed by the node name
-    rate_topics_[LEFT] = declare_parameter<std::string>("left_rate_topic", "/pico_left_controller/rate");
-    rate_topics_[RIGHT] = declare_parameter<std::string>("right_rate_topic", "/pico_right_controller/rate");
-    RCLCPP_INFO(get_logger(), "DEBUG: Rate topics - LEFT: '%s', RIGHT: '%s'", 
+    // Keep topic names relative so a ROS namespace can isolate multiple robot instances.
+    rate_topics_[LEFT] = declare_parameter<std::string>("left_rate_topic", "pico_left_controller/rate");
+    rate_topics_[RIGHT] = declare_parameter<std::string>("right_rate_topic", "pico_right_controller/rate");
+    RCLCPP_INFO(get_logger(), "DEBUG: Rate topics - LEFT: '%s', RIGHT: '%s'",
                 rate_topics_[LEFT].c_str(), rate_topics_[RIGHT].c_str());
     // 默认只发送左右手姿态四元数、扳机和按键，不再发布 TF（如需 TF，可通过参数开启）
     publish_tf_ = declare_parameter<bool>("publish_tf", false);
@@ -181,16 +181,16 @@ class PoseBridgeNode : public rclcpp::Node {
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     receiver_thread_ = std::thread(&PoseBridgeNode::receiverLoop, this);
-    
+
     // 添加调试输出
     RCLCPP_INFO(get_logger(), "========== Publisher Creation Summary ==========");
     for (int i = 0; i < HAND_COUNT; ++i) {
         std::string hand_name = (i == LEFT) ? "LEFT" : "RIGHT";
         RCLCPP_INFO(get_logger(), "%s Hand:", hand_name.c_str());
-        RCLCPP_INFO(get_logger(), "  Pose: %s - %s", 
-                    pose_topics_[i].c_str(), 
+        RCLCPP_INFO(get_logger(), "  Pose: %s - %s",
+                    pose_topics_[i].c_str(),
                     pose_publishers_[i] ? "CREATED" : "FAILED");
-        RCLCPP_INFO(get_logger(), "  Rate: %s - %s", 
+        RCLCPP_INFO(get_logger(), "  Rate: %s - %s",
                     rate_topics_[i].c_str(),
                     rate_publishers_[i] ? "CREATED" : "FAILED");
     }
@@ -242,7 +242,7 @@ class PoseBridgeNode : public rclcpp::Node {
                              "Failed to parse datagram: '%s'", buffer);
         continue;
       }
-      
+
       // 调试：显示原始接收到的位置数据（每 60 帧一次）
       static int raw_frame_count = 0;
       raw_frame_count++;
@@ -252,7 +252,7 @@ class PoseBridgeNode : public rclcpp::Node {
                             sample.hand == LEFT ? "LEFT" : "RIGHT",
                             sample.position[0], sample.position[1], sample.position[2]);
       }
-      
+
       publishSample(sample);
     }
   }

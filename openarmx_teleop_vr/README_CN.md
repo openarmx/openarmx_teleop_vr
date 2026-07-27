@@ -46,9 +46,9 @@ openarmx_teleop_vr/
 ## 4. 主要功能
 
 1. 支持左右手柄分别控制左右机械臂末端运动。
-2. 支持相对位置控制模式 VR 控制输入。
+2. 支持相对和绝对两种 VR 控制输入。
 3. 使用握把作为手动控制使能开关，降低误操作风险。
-4. 使用扳机控制左右夹爪开合。
+4. 普通夹爪模式下使用扳机控制左右夹爪开合。
 5. 支持慢速/快速两档关节步进限制。
 6. 支持按钮触发回零、举手。
 
@@ -60,57 +60,108 @@ openarmx_teleop_vr/
 2. VR 桥接节点已启动，并持续发布手柄话题。
 3. 运行环境中可导入 `openarmx_arm_driver`（本节点必需依赖）。
 
-### 典型启动顺序
+### 方式一：普通夹爪（默认模式）
 
-1. 终端 1：启动机器人底层
+1. 终端 1：启动官方普通夹爪双臂。
 
 ```bash
 cd <你的工作空间>
 source install/setup.bash
 
-# 仿真模式
+# 仿真
 ros2 launch openarmx_bringup openarmx.bimanual.launch.py \
   control_mode:=mit \
   robot_controller:=forward_position_controller \
   use_fake_hardware:=true
 
-# 实机模式：先启动 CAN 通道
-sudo ip link set can0 down
-sudo ip link set can0 type can bitrate 1000000
-sudo ip link set can0 up
-
-sudo ip link set can1 down
-sudo ip link set can1 type can bitrate 1000000
-sudo ip link set can1 up
-
+# 实机：can0/can1 需提前按 1000000 bitrate 启用
 ros2 launch openarmx_bringup openarmx.bimanual.launch.py \
-    right_can_interface:=can0 \
-    left_can_interface:=can1 \
-    control_mode:=mit \
-    robot_controller:=forward_position_controller \
-    enable_forward_effort:=true
-    use_fake_hardware:=false
+  right_can_interface:=can0 \
+  left_can_interface:=can1 \
+  control_mode:=mit \
+  robot_controller:=forward_position_controller \
+  use_fake_hardware:=false
+```
 
-2. 终端 2：启动 Pico/VR 桥接节点
+2. 终端 2：启动 Pico/VR 桥接节点。
 
 ```bash
-cd ~/openarmx_ws
+cd <你的工作空间>
 source install/setup.bash
-
 ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
 ```
 
-3. 终端 3：启动 VR 遥操作节点
+3. 终端 3：使用普通夹爪模型启动 VR。
 
 ```bash
-cd ~/openarmx_ws
+cd <你的工作空间>
+source install/setup.bash
+ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
+  controller_pose_mode:=gripper \
+  urdf_path:="$(ros2 pkg prefix openarmx_description)/share/openarmx_description/urdf/robot/openarmx_robot.urdf"
+```
+
+`gripper` 是默认控制模式。每侧发布 7 个机械臂关节和 1 个夹爪命令，VR 扳机
+控制普通夹爪。
+
+### 方式二：O6 灵巧手模式
+
+![OpenArmX O6 灵巧手 VR 遥操作演示](../assets/openarmx_hand.gif)
+
+1. 终端 1：启动带 O6 的机器人底层。
+
+```bash
+cd <你的工作空间>
 source install/setup.bash
 
-ros2 launch openarmx_teleop_vr teleop_vr.launch.py
+# 仿真；fake arm 会同时使用 fake O6，不启动真实 O6 CAN 驱动
+ros2 launch openarmx_hand_bringup openarmx.bimanual.o6.launch.py \
+  control_mode:=mit \
+  robot_controller:=forward_position_controller \
+  use_fake_hardware:=true
+
+# 实机：can0/can1/can2/can3 均需提前按 1000000 bitrate 启用
+ros2 launch openarmx_hand_bringup openarmx.bimanual.o6.launch.py \
+  right_can_interface:=can0 \
+  left_can_interface:=can1 \
+  control_mode:=mit \
+  robot_controller:=forward_position_controller \
+  use_fake_hardware:=false
+```
+
+O6 默认使用左手 `can3/0x28`、右手 `can2/0x27`。重力补偿默认关闭；需要时
+添加 `enable_forward_effort:=true`，且只能配合 `control_mode:=mit`。
+
+2. 终端 2：按方式一启动同一个 VR bridge。
+
+3. 终端 3：以灵巧手模式启动 VR。
+
+```bash
+cd <你的工作空间>
+source install/setup.bash
+ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
+  controller_pose_mode:=hand
+```
+
+`hand` 模式每侧只发布 7 个机械臂关节，不通过 VR 控制 O6 手指。O6 手指由
+Joint Slider、GUI 或独立控制节点控制。
+
+### O6 多机器人命名空间
+
+如果 O6 bringup 使用了 `robot_namespace:=robot1`，bridge 和 teleop 也必须使用
+`/robot1`：
+
+```bash
+ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node \
+  --ros-args -r __ns:=/robot1
+ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
+  controller_pose_mode:=hand robot_namespace:=robot1
 ```
 
 ## 6. 输入与输出话题
 
+下表是未指定命名空间时的完整话题名。指定 `robot_namespace:=robot1` 后，对应
+话题位于 `/robot1/...`。
 
 ### 相对模式输入话题（默认）
 
@@ -127,6 +178,19 @@ ros2 launch openarmx_teleop_vr teleop_vr.launch.py
 | `/pico_right_controller/button_b` | `std_msgs/Bool` | B 键，触发回零动作 |
 | `/pico_left_controller/button_y` | `std_msgs/Bool` | Y 键，触发举手动作 |
 
+### 绝对模式输入话题
+
+| 话题 | 类型 | 说明 |
+|------|------|------|
+| `/vr/head/pose` | `geometry_msgs/PoseStamped` | 头显位姿 |
+| `/vr/left/pose_absolute` | `geometry_msgs/PoseStamped` | 左手柄绝对位姿 |
+| `/vr/right/pose_absolute` | `geometry_msgs/PoseStamped` | 右手柄绝对位姿 |
+| `/vr/left/grip`、`/vr/right/grip` | `std_msgs/Float32` | 左右臂控制使能 |
+| `/vr/left/trigger`、`/vr/right/trigger` | `std_msgs/Float32` | 普通夹爪扳机输入 |
+| `/vr/calibrate_done` | `std_msgs/Bool` | 绝对模式标定完成信号 |
+| `/vr/control_mode` | `std_msgs/String` | VR 控制模式 |
+| `/vr/rate` | `std_msgs/Float32` | 绝对模式速度档位 |
+
 ### 机器人状态输入
 
 | 话题 | 类型 | 说明 |
@@ -137,8 +201,8 @@ ros2 launch openarmx_teleop_vr teleop_vr.launch.py
 
 | 话题 | 类型 | 说明 |
 |------|------|------|
-| `/left_forward_position_controller/commands` | `std_msgs/Float64MultiArray` | 左臂 7 个关节位置命令 + 左夹爪命令 |
-| `/right_forward_position_controller/commands` | `std_msgs/Float64MultiArray` | 右臂 7 个关节位置命令 + 右夹爪命令 |
+| `/left_forward_position_controller/commands` | `std_msgs/Float64MultiArray` | `gripper` 模式为 7 轴+夹爪，`hand` 模式为 7 轴 |
+| `/right_forward_position_controller/commands` | `std_msgs/Float64MultiArray` | `gripper` 模式为 7 轴+夹爪，`hand` 模式为 7 轴 |
 
 ## 7. 常用参数
 
@@ -146,28 +210,30 @@ ros2 launch openarmx_teleop_vr teleop_vr.launch.py
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `urdf_path` | 由 launch 注入 | 机器人 URDF 路径 |
-| `control_rate` | `60.0` | 控制循环频率，单位 Hz |
+| `urdf_path` | 由 launch 注入 | 普通夹爪指定官方 URDF；O6 留空时自动生成组合 URDF |
+| `control_rate` | `100.0` | 控制循环频率，单位 Hz |
 | `grip_threshold` | `0.5` | 握把使能阈值 |
-| `max_step_deg` | `2.0` | 慢速模式每周期最大关节步进角 |
-| `fast_max_step_deg` | `15.0` | 快速模式每周期最大关节步进角 |
-| `step_limit_enable_threshold_deg` | `8.0` | 目标与当前角度差超过该值后启用步进限制 |
-| `button_motion_step_deg` | `1.0` | 按键动作每周期最大关节步进角 |
+| `max_step_deg_joint1..7` | `4.0` | 慢速模式各关节每周期最大步进角 |
+| `fast_max_step_deg_joint1..7` | 见配置文件 | 快速模式各关节每周期最大步进角 |
+| `step_limit_enable_threshold_deg_joint1..7` | 见配置文件 | 各关节启用步进限制的误差阈值 |
+| `button_motion_step_deg` | `0.5` | 按键动作每周期最大关节步进角 |
 | `button_motion_done_tolerance_deg` | `1.0` | 按键动作到达目标的判定容差 |
 | `body_anchor_offset` | `[0.0, -0.18, 0.08]` | 头显到身体参考点的偏移 |
 | `position_scale_xyz` | `[1.0, 1.0, 0.9]` | 位置映射缩放系数 |
-| `left_axis_matrix` | 见配置文件 | 左手柄位置轴映射矩阵 |
-| `right_axis_matrix` | 见配置文件 | 右手柄位置轴映射矩阵 |
-| `left_orientation_matrix` | 见配置文件 | 左手柄姿态映射矩阵 |
-| `right_orientation_matrix` | 见配置文件 | 右手柄姿态映射矩阵 |
+| `controller_pose_mode` | `gripper` | `gripper` 使用指尖/AIM 映射并发布夹爪；`hand` 使用握把映射并只发布 7 轴 |
+| `gripper_*_axis_matrix` | 见配置文件 | 普通夹爪相对模式位置映射矩阵 |
+| `gripper_*_orientation_matrix` | 见配置文件 | 普通夹爪相对模式姿态映射矩阵 |
+| `hand_*_axis_matrix` | 见配置文件 | 灵巧手相对模式位置映射矩阵 |
+| `hand_*_orientation_matrix` | 见配置文件 | 灵巧手相对模式姿态映射矩阵 |
 
 常用话题参数也在配置文件中定义，例如：
 
 ```yaml
-left_pose_topic: "/pico_left_controller/pose"
-right_pose_topic: "/pico_right_controller/pose"
-left_cmd_topic: "/left_forward_position_controller/commands"
-right_cmd_topic: "/right_forward_position_controller/commands"
+vr_left_pose_topic: "vr/left/pose_absolute"
+vr_right_pose_topic: "vr/right/pose_absolute"
+left_cmd_topic: "left_forward_position_controller/commands"
+right_cmd_topic: "right_forward_position_controller/commands"
+controller_pose_mode: "gripper"
 ```
 
 ## 8. 操作说明
@@ -178,11 +244,13 @@ right_cmd_topic: "/right_forward_position_controller/commands"
 
 ### 扳机
 
-扳机值映射为夹爪开合命令。左、右扳机分别控制左、右夹爪。
+在 `gripper` 模式下，扳机值映射为夹爪开合命令。在 `hand` 模式下扳机不会
+生成 O6 手指命令，O6 由 Joint Slider、GUI 或独立控制节点控制。
 
 ### 速度档位
 
-`rate` 话题值接近 `1.0` 时进入快速模式，否则使用慢速模式。快速模式使用 `fast_max_step_deg`，慢速模式使用 `max_step_deg`。
+`rate` 话题值接近 `1.0` 时进入快速模式，否则使用慢速模式。两种模式分别使用
+`fast_max_step_deg_joint1..7` 和 `max_step_deg_joint1..7`。
 
 ### B 键
 
@@ -198,7 +266,8 @@ Y 键触发hands up动作，目前主要抬起左右臂第 4 关节，并受关�
 
 1. 节点启动时报 `urdf_path parameter is required`
 
-检查 launch 是否正常传入 `urdf_path`，或手动指定 URDF 绝对路径：
+O6 模式通过 launch 启动时会自动生成组合 URDF。普通夹爪应按照方式一显式传入
+官方普通模型；如果绕过 launch 直接运行节点，也需要手动指定 URDF 绝对路径：
 
 ```bash
 ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
@@ -230,11 +299,12 @@ ros2 topic echo /right_forward_position_controller/commands
 
 5. 机械臂动作抖动或跳变
 
-优先降低 `max_step_deg` 或 `fast_max_step_deg`，并确认 `/joint_states` 连续稳定。若 Pico 手柄电量较低或追踪丢失，也可能导致输入位姿异常。
+优先降低对应的 `max_step_deg_joint1..7` 或 `fast_max_step_deg_joint1..7`，并确认 `/joint_states` 连续稳定。若 Pico 手柄电量较低或追踪丢失，也可能导致输入位姿异常。
 
 6. 夹爪不响应
 
-检查扳机话题是否有数据，并确认对应手臂握把已经使能。
+普通夹爪模式下，检查扳机话题是否有数据，并确认对应手臂握把已经使能。O6
+模式不通过 VR 控制手指，这是预期行为。
 
 ## 10. 许可证
 

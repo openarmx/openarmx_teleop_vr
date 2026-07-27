@@ -17,6 +17,7 @@ from openarmx_arm_driver._lib.teleop_core import (
 )
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool, Float32, Float64MultiArray, String
 
@@ -114,8 +115,39 @@ class OpenArmXTeleopVRNode(Node):
         self.current_mode = None
         self.relative_is_full_speed = False
         self.absolute_is_full_speed = False
+        self.ik_enable_override = False
+        self.relative_stream_timeout_sec = 0.3
         self._init_pose_state()
         self._init_button_state()
+
+        controller_pose_mode = str(self.get_parameter("controller_pose_mode").value).strip().lower()
+        if controller_pose_mode not in ("gripper", "hand"):
+            self.get_logger().warn(
+                f"Invalid controller_pose_mode '{controller_pose_mode}', falling back to 'gripper'"
+            )
+            controller_pose_mode = "gripper"
+        self.controller_pose_mode = controller_pose_mode
+        self.publish_gripper_command = controller_pose_mode == "gripper"
+        relative_matrix_prefix = controller_pose_mode
+        self.relative_left_axis_matrix = self._matrix_from_parameter(f"{relative_matrix_prefix}_left_axis_matrix")
+        self.relative_right_axis_matrix = self._matrix_from_parameter(f"{relative_matrix_prefix}_right_axis_matrix")
+        self.relative_left_orientation_matrix = self._matrix_from_parameter(f"{relative_matrix_prefix}_left_orientation_matrix")
+        self.relative_right_orientation_matrix = self._matrix_from_parameter(f"{relative_matrix_prefix}_right_orientation_matrix")
+        absolute_left_axis_matrix = self._matrix_from_parameter("absolute_left_axis_matrix")
+        absolute_right_axis_matrix = self._matrix_from_parameter("absolute_right_axis_matrix")
+        absolute_left_orientation_matrix = self._matrix_from_parameter("gripper_left_orientation_matrix")
+        absolute_right_orientation_matrix = self._matrix_from_parameter("gripper_right_orientation_matrix")
+        self.get_logger().info(f"Controller pose mode: {controller_pose_mode}")
+        self.get_logger().info(f"Relative left axis matrix: {self._format_matrix(self.relative_left_axis_matrix)}")
+        self.get_logger().info(f"Relative right axis matrix: {self._format_matrix(self.relative_right_axis_matrix)}")
+        self.get_logger().info(f"Relative left orientation matrix: {self._format_matrix(self.relative_left_orientation_matrix)}")
+        self.get_logger().info(f"Relative right orientation matrix: {self._format_matrix(self.relative_right_orientation_matrix)}")
+        self.get_logger().info("Absolute mode uses gripper matrices")
+        self.get_logger().info(
+            "Command output: 7 arm joints + gripper"
+            if self.publish_gripper_command
+            else "Command output: 7 arm joints only"
+        )
 
         core_config = TeleopConfig(
             urdf_path=urdf_path,
@@ -126,10 +158,10 @@ class OpenArmXTeleopVRNode(Node):
             position_scale_xyz=np.asarray(
                 self.get_parameter("position_scale_xyz").value, dtype=np.float64
             ),
-            left_axis_matrix=self._matrix_from_parameter("left_axis_matrix"),
-            right_axis_matrix=self._matrix_from_parameter("right_axis_matrix"),
-            left_orientation_matrix=self._matrix_from_parameter("left_orientation_matrix"),
-            right_orientation_matrix=self._matrix_from_parameter("right_orientation_matrix"),
+            left_axis_matrix=absolute_left_axis_matrix,
+            right_axis_matrix=absolute_right_axis_matrix,
+            left_orientation_matrix=absolute_left_orientation_matrix,
+            right_orientation_matrix=absolute_right_orientation_matrix,
             stream_timeout_sec=0.3,
         )
         self.core = PinocchioTeleopCore(core_config)
@@ -194,50 +226,87 @@ class OpenArmXTeleopVRNode(Node):
         self.declare_parameter("button_motion_step_deg", 0.5)
         self.declare_parameter("button_motion_done_tolerance_deg", 1.0)
 
-        self.declare_parameter("vr_head_topic", "/vr/head/pose")
-        self.declare_parameter("vr_left_pose_topic", "/vr/left/pose_absolute")
-        self.declare_parameter("vr_right_pose_topic", "/vr/right/pose_absolute")
-        self.declare_parameter("vr_left_grip_topic", "/vr/left/grip")
-        self.declare_parameter("vr_right_grip_topic", "/vr/right/grip")
-        self.declare_parameter("vr_left_trigger_topic", "/vr/left/trigger")
-        self.declare_parameter("vr_right_trigger_topic", "/vr/right/trigger")
-        self.declare_parameter("vr_calibrate_topic", "/vr/calibrate_done")
-        self.declare_parameter("vr_control_mode_topic", "/vr/control_mode")
-        self.declare_parameter("vr_rate_topic", "/vr/rate")
-        self.declare_parameter("button_b_topic", "/pico_right_controller/button_b")
-        self.declare_parameter("button_y_topic", "/pico_left_controller/button_y")
-        self.declare_parameter("absolute_button_b_topic", "/vr/right/button_b")
-        self.declare_parameter("absolute_button_x_topic", "/vr/left/button_x")
-        self.declare_parameter("absolute_button_y_topic", "/vr/left/button_y")
+        self.declare_parameter("vr_head_topic", "vr/head/pose")
+        self.declare_parameter("vr_left_pose_topic", "vr/left/pose_absolute")
+        self.declare_parameter("vr_right_pose_topic", "vr/right/pose_absolute")
+        self.declare_parameter("vr_left_grip_topic", "vr/left/grip")
+        self.declare_parameter("vr_right_grip_topic", "vr/right/grip")
+        self.declare_parameter("vr_left_trigger_topic", "vr/left/trigger")
+        self.declare_parameter("vr_right_trigger_topic", "vr/right/trigger")
+        self.declare_parameter("vr_calibrate_topic", "vr/calibrate_done")
+        self.declare_parameter("vr_control_mode_topic", "vr/control_mode")
+        self.declare_parameter("vr_rate_topic", "vr/rate")
+        self.declare_parameter("button_b_topic", "pico_right_controller/button_b")
+        self.declare_parameter("button_y_topic", "pico_left_controller/button_y")
+        self.declare_parameter("absolute_button_b_topic", "vr/right/button_b")
+        self.declare_parameter("absolute_button_x_topic", "vr/left/button_x")
+        self.declare_parameter("absolute_button_y_topic", "vr/left/button_y")
+        self.declare_parameter("ik_enable_override_topic", "openarmx_teleop_vr/ik_enable_override")
 
-        self.declare_parameter("left_cmd_topic", "/left_forward_position_controller/commands")
-        self.declare_parameter("right_cmd_topic", "/right_forward_position_controller/commands")
+        self.declare_parameter("left_cmd_topic", "left_forward_position_controller/commands")
+        self.declare_parameter("right_cmd_topic", "right_forward_position_controller/commands")
 
         self.declare_parameter("body_anchor_offset", [0.0, -0.18, 0.08])
         self.declare_parameter("position_scale_xyz", [1.0, 1.0, 0.9])
+        self.declare_parameter("controller_pose_mode", "gripper")
+        gripper_axis_matrix = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+        absolute_axis_matrix = [0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+        hand_axis_matrix = [1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0]
+        identity_orientation_matrix = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+        hand_orientation_matrix = hand_axis_matrix
         self.declare_parameter(
-            "left_axis_matrix",
-            [0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            "gripper_left_axis_matrix",
+            gripper_axis_matrix,
         )
         self.declare_parameter(
-            "right_axis_matrix",
-            [0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+            "gripper_right_axis_matrix",
+            gripper_axis_matrix,
         )
         self.declare_parameter(
-            "left_orientation_matrix",
-            [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+            "absolute_left_axis_matrix",
+            absolute_axis_matrix,
         )
         self.declare_parameter(
-            "right_orientation_matrix",
-            [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+            "absolute_right_axis_matrix",
+            absolute_axis_matrix,
+        )
+        self.declare_parameter(
+            "gripper_left_orientation_matrix",
+            identity_orientation_matrix,
+        )
+        self.declare_parameter(
+            "gripper_right_orientation_matrix",
+            identity_orientation_matrix,
+        )
+        self.declare_parameter(
+            "hand_left_axis_matrix",
+            hand_axis_matrix,
+        )
+        self.declare_parameter(
+            "hand_right_axis_matrix",
+            hand_axis_matrix,
+        )
+        self.declare_parameter(
+            "hand_left_orientation_matrix",
+            hand_orientation_matrix,
+        )
+        self.declare_parameter(
+            "hand_right_orientation_matrix",
+            hand_orientation_matrix,
         )
 
     def _init_pose_state(self):
         self.absolute_head_pose = None
         self.absolute_left_pose = None
         self.absolute_right_pose = None
+        self.relative_left_raw_pose = None
+        self.relative_right_raw_pose = None
         self.relative_left_pose = None
         self.relative_right_pose = None
+        self.relative_left_reference_pose = None
+        self.relative_right_reference_pose = None
+        self.relative_left_enabled = False
+        self.relative_right_enabled = False
         self.absolute_left_grip = 0.0
         self.absolute_right_grip = 0.0
         self.absolute_left_trigger = 0.0
@@ -277,6 +346,13 @@ class OpenArmXTeleopVRNode(Node):
             raise ValueError(f"{name} must contain 9 values, got {values.size}")
         return values.reshape(3, 3)
 
+    @staticmethod
+    def _format_matrix(matrix: np.ndarray) -> str:
+        values = np.asarray(matrix, dtype=np.float64).reshape(3, 3)
+        return "[" + "; ".join(
+            ", ".join(f"{value:.1f}" for value in row) for row in values
+        ) + "]"
+
     def _pose_from_msg(self, msg: PoseStamped) -> PoseInput:
         position = np.array(
             [
@@ -298,6 +374,119 @@ class OpenArmXTeleopVRNode(Node):
         pose.orientation_xyzw = orientation_xyzw
         pose.timestamp = timestamp
         return pose
+
+    def _copy_pose(self, pose: PoseInput) -> PoseInput:
+        copied = PoseInput()
+        copied.position = np.asarray(pose.position, dtype=np.float64).copy()
+        copied.orientation_xyzw = tuple(float(value) for value in pose.orientation_xyzw)
+        copied.timestamp = pose.timestamp
+        return copied
+
+    def _identity_relative_pose(self, timestamp=None) -> PoseInput:
+        pose = PoseInput()
+        pose.position = np.zeros(3, dtype=np.float64)
+        pose.orientation_xyzw = (0.0, 0.0, 0.0, 1.0)
+        pose.timestamp = time.monotonic() if timestamp is None else timestamp
+        return pose
+
+    def _compute_raw_relative_pose(self, reference: PoseInput, current: PoseInput) -> PoseInput:
+        reference_rotation = self.core._quaternion_to_rotation_matrix(*reference.orientation_xyzw)
+        current_rotation = self.core._quaternion_to_rotation_matrix(*current.orientation_xyzw)
+        delta_pose = PoseInput()
+        delta_pose.position = reference_rotation.T @ (
+            np.asarray(current.position, dtype=np.float64) - np.asarray(reference.position, dtype=np.float64)
+        )
+        delta_rotation = reference_rotation.T @ current_rotation
+        delta_pose.orientation_xyzw = self._rotation_matrix_to_quaternion(delta_rotation)
+        delta_pose.timestamp = current.timestamp
+        return delta_pose
+
+    def _effective_relative_enable(self, grip_value: float) -> bool:
+        return self.ik_enable_override or grip_value > self.grip_threshold
+
+    def _update_relative_pose_state(self, arm: str):
+        raw_pose_attr = f"relative_{arm}_raw_pose"
+        reference_attr = f"relative_{arm}_reference_pose"
+        enabled_attr = f"relative_{arm}_enabled"
+        pose_attr = f"relative_{arm}_pose"
+        grip_attr = f"relative_{arm}_grip"
+        axis_matrix = getattr(self, f"relative_{arm}_axis_matrix")
+        orientation_matrix = getattr(self, f"relative_{arm}_orientation_matrix")
+
+        raw_pose = getattr(self, raw_pose_attr)
+        enabled = self._effective_relative_enable(getattr(self, grip_attr))
+        was_enabled = getattr(self, enabled_attr)
+
+        raw_pose_fresh = (
+            raw_pose is not None
+            and (time.monotonic() - raw_pose.timestamp) <= self.relative_stream_timeout_sec
+        )
+
+        if not enabled or not raw_pose_fresh:
+            release_pose = self._identity_relative_pose() if was_enabled else None
+            setattr(self, enabled_attr, False)
+            setattr(self, reference_attr, None)
+            setattr(self, pose_attr, release_pose)
+            return
+
+        if not was_enabled or getattr(self, reference_attr) is None:
+            setattr(self, reference_attr, self._copy_pose(raw_pose))
+            setattr(self, enabled_attr, True)
+            relative_pose = self._identity_relative_pose(raw_pose.timestamp)
+        else:
+            relative_pose = self._compute_raw_relative_pose(getattr(self, reference_attr), raw_pose)
+
+        setattr(
+            self,
+            pose_attr,
+            self._map_relative_pose(relative_pose, axis_matrix, orientation_matrix),
+        )
+
+    def _map_relative_pose(
+        self,
+        pose: PoseInput,
+        axis_matrix: np.ndarray,
+        orientation_matrix: np.ndarray,
+    ) -> PoseInput:
+        pose.position = axis_matrix @ pose.position
+        rotation = self.core._quaternion_to_rotation_matrix(*pose.orientation_xyzw)
+        mapped_rotation = orientation_matrix @ rotation @ orientation_matrix.T
+        pose.orientation_xyzw = self._rotation_matrix_to_quaternion(mapped_rotation)
+        return pose
+
+    @staticmethod
+    def _rotation_matrix_to_quaternion(rotation: np.ndarray):
+        matrix = np.asarray(rotation, dtype=np.float64).reshape(3, 3)
+        trace = float(np.trace(matrix))
+        if trace > 0.0:
+            scale = np.sqrt(trace + 1.0) * 2.0
+            qw = 0.25 * scale
+            qx = (matrix[2, 1] - matrix[1, 2]) / scale
+            qy = (matrix[0, 2] - matrix[2, 0]) / scale
+            qz = (matrix[1, 0] - matrix[0, 1]) / scale
+        elif matrix[0, 0] > matrix[1, 1] and matrix[0, 0] > matrix[2, 2]:
+            scale = np.sqrt(1.0 + matrix[0, 0] - matrix[1, 1] - matrix[2, 2]) * 2.0
+            qw = (matrix[2, 1] - matrix[1, 2]) / scale
+            qx = 0.25 * scale
+            qy = (matrix[0, 1] + matrix[1, 0]) / scale
+            qz = (matrix[0, 2] + matrix[2, 0]) / scale
+        elif matrix[1, 1] > matrix[2, 2]:
+            scale = np.sqrt(1.0 + matrix[1, 1] - matrix[0, 0] - matrix[2, 2]) * 2.0
+            qw = (matrix[0, 2] - matrix[2, 0]) / scale
+            qx = (matrix[0, 1] + matrix[1, 0]) / scale
+            qy = 0.25 * scale
+            qz = (matrix[1, 2] + matrix[2, 1]) / scale
+        else:
+            scale = np.sqrt(1.0 + matrix[2, 2] - matrix[0, 0] - matrix[1, 1]) * 2.0
+            qw = (matrix[1, 0] - matrix[0, 1]) / scale
+            qx = (matrix[0, 2] + matrix[2, 0]) / scale
+            qy = (matrix[1, 2] + matrix[2, 1]) / scale
+            qz = 0.25 * scale
+        quaternion = np.array([qx, qy, qz, qw], dtype=np.float64)
+        norm = float(np.linalg.norm(quaternion))
+        if norm > 0.0:
+            quaternion /= norm
+        return tuple(float(value) for value in quaternion)
 
     def _setup_ros_io(self):
         p = self.get_parameter
@@ -343,28 +532,28 @@ class OpenArmXTeleopVRNode(Node):
         )
 
         self.relative_left_pose_sub = self.create_subscription(
-            PoseStamped, "/pico_left_controller/pose", self._relative_left_pose_callback, 10, callback_group=self.cb_group
+            PoseStamped, "pico_left_controller/pose", self._relative_left_pose_callback, 10, callback_group=self.cb_group
         )
         self.relative_right_pose_sub = self.create_subscription(
-            PoseStamped, "/pico_right_controller/pose", self._relative_right_pose_callback, 10, callback_group=self.cb_group
+            PoseStamped, "pico_right_controller/pose", self._relative_right_pose_callback, 10, callback_group=self.cb_group
         )
         self.relative_left_grip_sub = self.create_subscription(
-            Float32, "/pico_left_controller/grip", self._relative_left_grip_callback, 10, callback_group=self.cb_group
+            Float32, "pico_left_controller/grip", self._relative_left_grip_callback, 10, callback_group=self.cb_group
         )
         self.relative_right_grip_sub = self.create_subscription(
-            Float32, "/pico_right_controller/grip", self._relative_right_grip_callback, 10, callback_group=self.cb_group
+            Float32, "pico_right_controller/grip", self._relative_right_grip_callback, 10, callback_group=self.cb_group
         )
         self.relative_left_trigger_sub = self.create_subscription(
-            Float32, "/pico_left_controller/trigger", self._relative_left_trigger_callback, 10, callback_group=self.cb_group
+            Float32, "pico_left_controller/trigger", self._relative_left_trigger_callback, 10, callback_group=self.cb_group
         )
         self.relative_right_trigger_sub = self.create_subscription(
-            Float32, "/pico_right_controller/trigger", self._relative_right_trigger_callback, 10, callback_group=self.cb_group
+            Float32, "pico_right_controller/trigger", self._relative_right_trigger_callback, 10, callback_group=self.cb_group
         )
         self.relative_left_rate_sub = self.create_subscription(
-            Float32, "/pico_left_controller/rate", self._relative_rate_callback, 10, callback_group=self.cb_group
+            Float32, "pico_left_controller/rate", self._relative_rate_callback, 10, callback_group=self.cb_group
         )
         self.relative_right_rate_sub = self.create_subscription(
-            Float32, "/pico_right_controller/rate", self._relative_rate_callback, 10, callback_group=self.cb_group
+            Float32, "pico_right_controller/rate", self._relative_rate_callback, 10, callback_group=self.cb_group
         )
         self.relative_button_b_sub = self.create_subscription(
             Bool, p("button_b_topic").value, self._relative_button_b_callback, 10, callback_group=self.cb_group
@@ -372,9 +561,19 @@ class OpenArmXTeleopVRNode(Node):
         self.relative_button_y_sub = self.create_subscription(
             Bool, p("button_y_topic").value, self._relative_button_y_callback, 10, callback_group=self.cb_group
         )
+        ik_override_qos = QoSProfile(depth=1)
+        ik_override_qos.reliability = ReliabilityPolicy.RELIABLE
+        ik_override_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
+        self.ik_enable_override_sub = self.create_subscription(
+            Bool,
+            p("ik_enable_override_topic").value,
+            self._ik_enable_override_callback,
+            ik_override_qos,
+            callback_group=self.cb_group,
+        )
 
         self.joint_state_sub = self.create_subscription(
-            JointState, "/joint_states", self._joint_state_callback, 10, callback_group=self.cb_group
+            JointState, "joint_states", self._joint_state_callback, 10, callback_group=self.cb_group
         )
 
         self.left_cmd_pub = self.create_publisher(
@@ -435,11 +634,11 @@ class OpenArmXTeleopVRNode(Node):
 
     def _relative_left_pose_callback(self, msg: PoseStamped):
         with self.pose_mutex:
-            self.relative_left_pose = self._pose_from_msg(msg)
+            self.relative_left_raw_pose = self._pose_from_msg(msg)
 
     def _relative_right_pose_callback(self, msg: PoseStamped):
         with self.pose_mutex:
-            self.relative_right_pose = self._pose_from_msg(msg)
+            self.relative_right_raw_pose = self._pose_from_msg(msg)
 
     def _relative_left_grip_callback(self, msg: Float32):
         self.relative_left_grip = max(0.0, min(1.0, float(msg.data)))
@@ -455,6 +654,9 @@ class OpenArmXTeleopVRNode(Node):
 
     def _relative_rate_callback(self, msg: Float32):
         self.relative_is_full_speed = float(msg.data) >= 0.999
+
+    def _ik_enable_override_callback(self, msg: Bool):
+        self.ik_enable_override = bool(msg.data)
 
     def _relative_button_b_callback(self, msg: Bool):
         self._handle_button_edge("relative_button_b_pressed", "pending_go_home", bool(msg.data))
@@ -477,13 +679,17 @@ class OpenArmXTeleopVRNode(Node):
 
     def _current_relative_input(self) -> RelativeTeleopInputFrame:
         with self.pose_mutex:
+            self._update_relative_pose_state("left")
+            self._update_relative_pose_state("right")
             left_pose = self.relative_left_pose
             right_pose = self.relative_right_pose
+            left_enabled = self.relative_left_enabled
+            right_enabled = self.relative_right_enabled
         frame = RelativeTeleopInputFrame()
         frame.left_pose = left_pose
         frame.right_pose = right_pose
-        frame.left_grip = self.relative_left_grip
-        frame.right_grip = self.relative_right_grip
+        frame.left_grip = 1.0 if left_enabled else 0.0
+        frame.right_grip = 1.0 if right_enabled else 0.0
         frame.left_trigger = self.relative_left_trigger
         frame.right_trigger = self.relative_right_trigger
         return frame
@@ -512,9 +718,11 @@ class OpenArmXTeleopVRNode(Node):
         )
 
     def _relative_manual_override_requested(self):
-        if self.relative_left_grip > self.grip_threshold and self._relative_pose_has_motion(self.relative_left_pose):
+        if self.ik_enable_override:
             return True
-        if self.relative_right_grip > self.grip_threshold and self._relative_pose_has_motion(self.relative_right_pose):
+        if self.relative_left_grip > self.grip_threshold:
+            return True
+        if self.relative_right_grip > self.grip_threshold:
             return True
         return False
 
@@ -792,11 +1000,15 @@ class OpenArmXTeleopVRNode(Node):
 
     def _publish_joint_commands(self, left_joints, right_joints, left_gripper, right_gripper):
         left_cmd = Float64MultiArray()
-        left_cmd.data = list(left_joints) + [float(left_gripper)]
+        left_cmd.data = list(left_joints)
+        if self.publish_gripper_command:
+            left_cmd.data.append(float(left_gripper))
         self.left_cmd_pub.publish(left_cmd)
 
         right_cmd = Float64MultiArray()
-        right_cmd.data = list(right_joints) + [float(right_gripper)]
+        right_cmd.data = list(right_joints)
+        if self.publish_gripper_command:
+            right_cmd.data.append(float(right_gripper))
         self.right_cmd_pub.publish(right_cmd)
 
     def _get_current_gripper_command(self, arm: str) -> float:

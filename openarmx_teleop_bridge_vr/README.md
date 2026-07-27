@@ -43,6 +43,14 @@ source install/setup.bash
 ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
 ```
 
+Topic names are relative. Without a namespace they resolve to the `/pico_*` and `/vr/*`
+names below. For multiple robots, use the same namespace as bringup and teleop:
+
+```bash
+ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node \
+  --ros-args -r __ns:=/robot1
+```
+
 ### Check Whether Data Is Being Published
 
 ```bash
@@ -62,10 +70,14 @@ ros2 topic echo /pico_right_controller/pose
 | 6 | Grip | `/pico_right_controller/grip` |
 | 7 | Rate | `/pico_left_controller/rate` |
 | 8 | Rate | `/pico_right_controller/rate` |
-| 9 | Button | `pico_right_controller/button_a` |
-| 10 | Button | `pico_right_controller/button_b` |
-| 11 | Button | `pico_left_controller/button_x` |
-| 12 | Button | `pico_left_controller/button_y` |
+| 9 | Button | `/pico_right_controller/button_a` |
+| 10 | Button | `/pico_right_controller/button_b` |
+| 11 | Button | `/pico_left_controller/button_x` |
+| 12 | Button | `/pico_left_controller/button_y` |
+
+The bridge also publishes absolute-mode topics under `/vr/head/pose`, `/vr/left/*`,
+`/vr/right/*`, `/vr/control_mode`, `/vr/calibrate_done`, and `/vr/rate`. With the
+`robot1` namespace, these resolve under `/robot1/pico_*` and `/robot1/vr/*`.
 
 ## 6. Common Parameters (Application Level)
 

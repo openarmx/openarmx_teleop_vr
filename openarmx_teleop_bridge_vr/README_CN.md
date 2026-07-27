@@ -43,6 +43,14 @@ source install/setup.bash
 ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
 ```
 
+包内话题使用相对名称。未指定命名空间时会解析为下表中的 `/pico_*` 和
+`/vr/*`；多机器人时应与 bringup、teleop 使用相同命名空间：
+
+```bash
+ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node \
+  --ros-args -r __ns:=/robot1
+```
+
 ### 检查是否有数据
 
 ```bash
@@ -62,10 +70,14 @@ ros2 topic echo /pico_right_controller/pose
 | 6 | 握把 | `/pico_right_controller/grip` |
 | 7 | 倍率 | `/pico_left_controller/rate` |
 | 8 | 倍率 | `/pico_right_controller/rate` |
-| 9 | 按键 | `pico_right_controller/button_a` |
-| 10 | 按键 | `pico_right_controller/button_b` |
-| 11 | 按键 | `pico_left_controller/button_x` |
-| 12 | 按键 | `pico_left_controller/button_y` |
+| 9 | 按键 | `/pico_right_controller/button_a` |
+| 10 | 按键 | `/pico_right_controller/button_b` |
+| 11 | 按键 | `/pico_left_controller/button_x` |
+| 12 | 按键 | `/pico_left_controller/button_y` |
+
+桥接节点还会发布绝对模式使用的 `/vr/head/pose`、`/vr/left/*`、
+`/vr/right/*`、`/vr/control_mode`、`/vr/calibrate_done` 和 `/vr/rate`。指定
+`robot1` 后，上述话题分别解析到 `/robot1/pico_*` 和 `/robot1/vr/*`。
 
 ## 6. 常用参数（应用层）
 

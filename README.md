@@ -4,9 +4,7 @@ This directory is the OpenArmX **VR teleoperation pipeline**. It contains two RO
 
 `VR controller UDP data -> ROS 2 topics -> dual-arm joint control commands`
 
-<p align="center">
-  <img src="assets/openarmx_teleop_vr.gif" alt="openarmx_teleop_vr demo" />
-</p>
+![OpenArmX standard-gripper VR teleoperation demo](assets/openarmx_teleop_vr.gif)
 
 > ⚠️ It is strongly recommended to start in this order: "robot base -> bridge node -> teleop node". This avoids failures caused by unavailable topics.
 
@@ -23,11 +21,12 @@ APK repository:
 
 ```text
 openarmx_teleop_vr/
+├── assets/                         # Documentation media
 ├── openarmx_teleop_bridge_vr/   # C++ bridge package: UDP -> ROS 2 topics/TF
 ├── openarmx_teleop_vr/          # Python teleop package: topic input -> IK -> control commands
 ├── LICENSE
 ├── README_CN.md                      # This overview (Chinese)
-└── README_EN.md                      # This overview (English)
+└── README.md                         # This overview (English)
 ```
 
 ## 📦 What Each Subpackage Does
@@ -39,6 +38,8 @@ openarmx_teleop_vr/
 2. `openarmx_teleop_vr`
 - Subscribes to bridge topics and `/joint_states`.
 - Performs IK computation and constraint handling.
+- In gripper mode, publishes seven arm joints plus one gripper command per side.
+- In O6 mode, publishes only seven arm joints per side; separate nodes control O6 fingers.
 - Publishes dual-arm control commands to:
   - `/left_forward_position_controller/commands`
   - `/right_forward_position_controller/commands`
@@ -51,35 +52,63 @@ openarmx_teleop_vr/
 
 > ✅ Teleoperation is more stable after all three steps are fully running.
 
-Example:
+Common preparation:
 
 ```bash
 cd <your_workspace>
 colcon build --packages-select openarmx_teleop_bridge_vr openarmx_teleop_vr
 source install/setup.bash
+```
 
-# Terminal 1: robot base (real robot)
-# Note: In the current version, performance is better with gravity compensation enabled; keeping it on is recommended.
+### Option 1: Standard Grippers (Default)
+
+```bash
+# Terminal 1: start the upstream bimanual robot with standard grippers
 ros2 launch openarmx_bringup openarmx.bimanual.launch.py \
-    right_can_interface:=can0 \
-    left_can_interface:=can1 \
-    control_mode:=mit \
-    robot_controller:=forward_position_controller \
-    enable_forward_effort:=true
-    use_fake_hardware:=false
+  use_fake_hardware:=false \
+  control_mode:=mit \
+  robot_controller:=forward_position_controller
+
+# Terminal 2: VR bridge
+ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
+
+# Terminal 3: VR teleop; gripper is the default control mode
+ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
+  controller_pose_mode:=gripper \
+  urdf_path:="$(ros2 pkg prefix openarmx_description)/share/openarmx_description/urdf/robot/openarmx_robot.urdf"
+```
+
+Standard-gripper mode publishes seven arm joints plus one gripper command per side. VR
+triggers control the grippers.
+
+### Option 2: O6 Dexterous Hands
+
+![OpenArmX O6 dexterous-hand VR teleoperation demo](assets/openarmx_hand.gif)
+
+```bash
+# Terminal 1: start the bimanual robot with O6 hands; gravity compensation is off by default
+ros2 launch openarmx_hand_bringup openarmx.bimanual.o6.launch.py \
+  use_fake_hardware:=false \
+  control_mode:=mit \
+  robot_controller:=forward_position_controller
 
 # Terminal 2: VR bridge
 ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
 
 # Terminal 3: VR teleoperation execution node
-ros2 launch openarmx_teleop_vr teleop_vr.launch.py
+ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
+  controller_pose_mode:=hand
 ```
+
+O6 mode publishes only seven arm joints per side and VR does not control O6 finger joints.
+For multiple robots, all three processes must use the same ROS namespace; see the
+package-specific documentation.
 
 ## 🔎 Quick Checks
 
 - Check bridge input:
-  - `ros2 topic echo /vr_left_controller/pose`
-  - `ros2 topic echo /vr_right_controller/pose`
+  - `ros2 topic echo /pico_left_controller/pose`
+  - `ros2 topic echo /pico_right_controller/pose`
 - Check teleop output:
   - `ros2 topic echo /left_forward_position_controller/commands`
   - `ros2 topic echo /right_forward_position_controller/commands`
@@ -89,7 +118,7 @@ ros2 launch openarmx_teleop_vr teleop_vr.launch.py
 ## 🧩 Key Dependencies (Summary)
 
 - Bridge package: `rclcpp`, `geometry_msgs`, `tf2_ros`
-- Teleop package: `rclpy`, `geometry_msgs`, `sensor_msgs`, `std_msgs`, `tf2_ros`, `xacro`, `openarmx_description`
+- Teleop package: `rclpy`, `geometry_msgs`, `sensor_msgs`, `std_msgs`, `openarmx_hand_description`
 - Runtime also requires `openarmx_arm_driver` (see subpackage docs)
 
 ## 📚 Detailed Documentation Entry Points

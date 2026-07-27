@@ -4,9 +4,7 @@
 
 `VR 手柄 UDP 数据 -> ROS 2 话题 -> 双臂关节控制命令`
 
-<p align="center">
-  <img src="assets/openarmx_teleop_vr.gif" alt="openarmx_teleop_vr 演示" />
-</p>
+![OpenArmX 普通夹爪 VR 遥操作演示](assets/openarmx_teleop_vr.gif)
 
 > ⚠️ 推荐严格按“机器人底层 -> 桥接节点 -> 遥操作节点”的顺序启动，避免话题未就绪导致控制失败。
 
@@ -23,11 +21,12 @@
 
 ```text
 openarmx_teleop_vr/
+├── assets/                         # 文档演示资源
 ├── openarmx_teleop_bridge_vr/   # C++ 桥接包：UDP -> ROS 2 话题/TF
 ├── openarmx_teleop_vr/          # Python 遥操作包：话题输入 -> IK -> 控制命令
 ├── LICENSE                           # 许可证
 ├── README_CN.md                      # 本简介（中文）
-└── README_EN.md                      # This overview (English)
+└── README.md                         # 本简介（英文）
 ```
 
 ## 📦 两个子包分别做什么
@@ -39,6 +38,8 @@ openarmx_teleop_vr/
 2. `openarmx_teleop_vr`
 - 订阅桥接包发布的话题与 `/joint_states`。
 - 进行 IK 计算和约束处理。
+- 普通夹爪模式每侧发布 7 个机械臂关节和 1 个夹爪命令。
+- O6 模式每侧只发布 7 个机械臂关节命令，O6 手指由独立节点控制。
 - 发布双臂控制命令到：
   - `/left_forward_position_controller/commands`
   - `/right_forward_position_controller/commands`
@@ -51,36 +52,62 @@ openarmx_teleop_vr/
 
 > ✅ 三步全部启动后，再进行手柄操作更稳定。
 
-示例：
+公共准备：
 
 ```bash
 cd <你的工作空间>
 colcon build --packages-select openarmx_teleop_bridge_vr openarmx_teleop_vr
 source install/setup.bash
+```
 
-# 终端 1：机器人控制（真机）
-# 提示：当前版本启动重力补偿后效果更佳，建议保持开启状态。
+### 方式一：普通夹爪（默认模式）
+
+```bash
+# 终端 1：启动官方普通夹爪双臂
 ros2 launch openarmx_bringup openarmx.bimanual.launch.py \
-    right_can_interface:=can0 \
-    left_can_interface:=can1 \
-    control_mode:=mit \
-    robot_controller:=forward_position_controller \
-    enable_forward_effort:=true
-    use_fake_hardware:=false
+  use_fake_hardware:=false \
+  control_mode:=mit \
+  robot_controller:=forward_position_controller
+
+# 终端 2：VR 桥接
+ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
+
+# 终端 3：VR 遥操作；gripper 是默认控制模式
+ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
+  controller_pose_mode:=gripper \
+  urdf_path:="$(ros2 pkg prefix openarmx_description)/share/openarmx_description/urdf/robot/openarmx_robot.urdf"
+```
+
+普通夹爪模式每侧发布 7 个机械臂关节和 1 个夹爪命令，VR 扳机控制夹爪。
+
+### 方式二：O6 灵巧手模式
+
+![OpenArmX O6 灵巧手 VR 遥操作演示](assets/openarmx_hand.gif)
+
+```bash
+# 终端 1：启动带 O6 的双臂，重力补偿默认关闭
+ros2 launch openarmx_hand_bringup openarmx.bimanual.o6.launch.py \
+  use_fake_hardware:=false \
+  control_mode:=mit \
+  robot_controller:=forward_position_controller
 
 # 终端 2：VR 桥接
 ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
 
 # 终端 3：VR 遥操作执行节点
 # 当前使用的 openarmx_arm_driver 库必须是 1.3.3 版本即以上
-ros2 launch openarmx_teleop_vr teleop_vr.launch.py
+ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
+  controller_pose_mode:=hand
 ```
+
+O6 模式每侧只发布 7 个机械臂关节命令，不通过 VR 控制手指。多机器人运行时，
+三个进程应使用同一个 ROS 命名空间，详见子包文档。
 
 ## 🔎 快速检查
 
 - 桥接输入是否正常：
-  - `ros2 topic echo /vr_left_controller/pose`
-  - `ros2 topic echo /vr_right_controller/pose`
+  - `ros2 topic echo /pico_left_controller/pose`
+  - `ros2 topic echo /pico_right_controller/pose`
 - 遥操作输出是否正常：
   - `ros2 topic echo /left_forward_position_controller/commands`
   - `ros2 topic echo /right_forward_position_controller/commands`
@@ -90,7 +117,7 @@ ros2 launch openarmx_teleop_vr teleop_vr.launch.py
 ## 🧩 关键依赖（摘要）
 
 - 桥接包：`rclcpp`、`geometry_msgs`、`tf2_ros`
-- 遥操作包：`rclpy`、`geometry_msgs`、`sensor_msgs`、`std_msgs`、`tf2_ros`、`xacro`、`openarmx_description`
+- 遥操作包：`rclpy`、`geometry_msgs`、`sensor_msgs`、`std_msgs`、`openarmx_hand_description`
 - 运行侧还需要 `openarmx_arm_driver`（详见子包文档）
 
 ## 📚 详细文档入口
