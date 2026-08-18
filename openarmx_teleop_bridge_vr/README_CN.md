@@ -74,9 +74,14 @@ ros2 topic echo /pico_right_controller/pose
 | 10 | 按键 | `/pico_right_controller/button_b` |
 | 11 | 按键 | `/pico_left_controller/button_x` |
 | 12 | 按键 | `/pico_left_controller/button_y` |
+| 13 | 摇杆轴 | `/pico_left_controller/joystick` |
+| 14 | 摇杆轴 | `/pico_right_controller/joystick` |
+| 15 | 摇杆按下 | `/pico_left_controller/button_joystick` |
+| 16 | 摇杆按下 | `/pico_right_controller/button_joystick` |
 
 桥接节点还会发布绝对模式使用的 `/vr/head/pose`、`/vr/left/*`、
-`/vr/right/*`、`/vr/control_mode`、`/vr/calibrate_done` 和 `/vr/rate`。指定
+`/vr/right/*`、`/vr/control_mode`、`/vr/calibrate_done` 和 `/vr/rate`，并将 Pico 的
+`CFG POSE_MODE` 独立发布为 `/vr/controller_pose_mode`。指定
 `robot1` 后，上述话题分别解析到 `/robot1/pico_*` 和 `/robot1/vr/*`。
 
 ## 6. 常用参数（应用层）
@@ -87,6 +92,9 @@ ros2 topic echo /pico_right_controller/pose
 | `listen_port` | 监听端口 | `5100` |
 | `publish_tf` | 是否发布 TF | `false` |
 | `frame_id` | 发布姿态时的父坐标系 | `pico_hmd` |
+| `left_joystick_topic` / `right_joystick_topic` | 左右摇杆轴话题 | `pico_*_controller/joystick` |
+| `left_joystick_button_topic` / `right_joystick_button_topic` | 左右摇杆按下话题 | `pico_*_controller/button_joystick` |
+| `pose_source_mode_topic` | AIM/GRIP 位姿来源状态话题 | `vr/controller_pose_mode` |
 
 示例（修改端口并开启 TF）：
 

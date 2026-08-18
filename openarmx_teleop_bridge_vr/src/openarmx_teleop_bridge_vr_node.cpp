@@ -28,6 +28,7 @@
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "std_msgs/msg/float32.hpp"
+#include "std_msgs/msg/float32_multi_array.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -45,6 +46,9 @@ enum PacketKind {
   HEAD = 2,
   MODE = 3,
   CALIBRATE_DONE = 4,
+  JOYSTICK = 5,
+  BUTTON = 6,
+  POSE_SOURCE_CONFIG = 7,
 };
 
 struct PoseSample {
@@ -60,6 +64,11 @@ struct PoseSample {
   bool button_y = false;       // Y键状态（左手柄）
   double rate = 0.1;           // 倍率（0.1或1.0）
   std::string control_mode{};
+  double joystick_x = 0.0;
+  double joystick_y = 0.0;
+  std::string button_name{};
+  bool button_pressed = false;
+  std::string pose_source_mode{};
   int64_t timestamp_ns = 0;
 };
 
@@ -128,6 +137,16 @@ class PoseBridgeNode : public rclcpp::Node {
     button_b_topic_ = declare_parameter<std::string>("button_b_topic", "pico_right_controller/button_b");
     button_x_topic_ = declare_parameter<std::string>("button_x_topic", "pico_left_controller/button_x");
     button_y_topic_ = declare_parameter<std::string>("button_y_topic", "pico_left_controller/button_y");
+    joystick_topics_[LEFT] = declare_parameter<std::string>(
+        "left_joystick_topic", "pico_left_controller/joystick");
+    joystick_topics_[RIGHT] = declare_parameter<std::string>(
+        "right_joystick_topic", "pico_right_controller/joystick");
+    joystick_button_topics_[LEFT] = declare_parameter<std::string>(
+        "left_joystick_button_topic", "pico_left_controller/button_joystick");
+    joystick_button_topics_[RIGHT] = declare_parameter<std::string>(
+        "right_joystick_button_topic", "pico_right_controller/button_joystick");
+    pose_source_mode_topic_ = declare_parameter<std::string>(
+        "pose_source_mode_topic", "vr/controller_pose_mode");
     // Keep topic names relative so a ROS namespace can isolate multiple robot instances.
     rate_topics_[LEFT] = declare_parameter<std::string>("left_rate_topic", "pico_left_controller/rate");
     rate_topics_[RIGHT] = declare_parameter<std::string>("right_rate_topic", "pico_right_controller/rate");
@@ -170,6 +189,14 @@ class PoseBridgeNode : public rclcpp::Node {
     button_b_publisher_ = create_publisher<std_msgs::msg::Bool>(button_b_topic_, 10);
     button_x_publisher_ = create_publisher<std_msgs::msg::Bool>(button_x_topic_, 10);
     button_y_publisher_ = create_publisher<std_msgs::msg::Bool>(button_y_topic_, 10);
+    for (int i = 0; i < HAND_COUNT; ++i) {
+      joystick_publishers_[i] = create_publisher<std_msgs::msg::Float32MultiArray>(
+          joystick_topics_[i], 10);
+      joystick_button_publishers_[i] = create_publisher<std_msgs::msg::Bool>(
+          joystick_button_topics_[i], 10);
+    }
+    pose_source_mode_publisher_ = create_publisher<std_msgs::msg::String>(
+        pose_source_mode_topic_, 10);
     absolute_button_a_publisher_ =
         create_publisher<std_msgs::msg::Bool>(absolute_button_a_topic_, 10);
     absolute_button_b_publisher_ =
@@ -334,6 +361,52 @@ class PoseBridgeNode : public rclcpp::Node {
     if (stringEqualsIgnoreCase(token, "HEAD")) {
       out_sample.kind = HEAD;
       return parseHeadPayload(iss, out_sample);
+    }
+
+    if (stringEqualsIgnoreCase(token, "JOY")) {
+      std::string hand_token;
+      if (!(iss >> hand_token) ||
+          (!stringEqualsIgnoreCase(hand_token, "LEFT") &&
+           !stringEqualsIgnoreCase(hand_token, "RIGHT"))) {
+        return false;
+      }
+      out_sample.kind = JOYSTICK;
+      out_sample.hand = stringEqualsIgnoreCase(hand_token, "LEFT") ? LEFT : RIGHT;
+      if (!(iss >> out_sample.joystick_x >> out_sample.joystick_y)) {
+        return false;
+      }
+      if (!(iss >> out_sample.timestamp_ns)) {
+        out_sample.timestamp_ns = 0;
+      }
+      return true;
+    }
+
+    if (stringEqualsIgnoreCase(token, "BTN")) {
+      std::string hand_token;
+      int pressed = 0;
+      if (!(iss >> hand_token >> out_sample.button_name >> pressed >> out_sample.timestamp_ns) ||
+          (!stringEqualsIgnoreCase(hand_token, "LEFT") &&
+           !stringEqualsIgnoreCase(hand_token, "RIGHT")) ||
+          !stringEqualsIgnoreCase(out_sample.button_name, "JOYSTICK")) {
+        return false;
+      }
+      out_sample.kind = BUTTON;
+      out_sample.hand = stringEqualsIgnoreCase(hand_token, "LEFT") ? LEFT : RIGHT;
+      out_sample.button_pressed = pressed != 0;
+      return true;
+    }
+
+    if (stringEqualsIgnoreCase(token, "CFG")) {
+      std::string config_name;
+      int mode_value = -1;
+      if (!(iss >> config_name >> mode_value >> out_sample.timestamp_ns) ||
+          !stringEqualsIgnoreCase(config_name, "POSE_MODE") ||
+          (mode_value != 0 && mode_value != 1)) {
+        return false;
+      }
+      out_sample.kind = POSE_SOURCE_CONFIG;
+      out_sample.pose_source_mode = mode_value == 0 ? "gripper" : "hand";
+      return true;
     }
 
     if (stringEqualsIgnoreCase(token, "MODE")) {
@@ -562,6 +635,26 @@ class PoseBridgeNode : public rclcpp::Node {
         head_pose_publisher_->publish(pose_msg);
         break;
       }
+      case JOYSTICK: {
+        auto joystick_msg = std_msgs::msg::Float32MultiArray();
+        joystick_msg.data = {
+          static_cast<float>(sample.joystick_x),
+          static_cast<float>(sample.joystick_y)};
+        joystick_publishers_[sample.hand]->publish(joystick_msg);
+        break;
+      }
+      case BUTTON: {
+        auto button_msg = std_msgs::msg::Bool();
+        button_msg.data = sample.button_pressed;
+        joystick_button_publishers_[sample.hand]->publish(button_msg);
+        break;
+      }
+      case POSE_SOURCE_CONFIG: {
+        auto mode_msg = std_msgs::msg::String();
+        mode_msg.data = sample.pose_source_mode;
+        pose_source_mode_publisher_->publish(mode_msg);
+        break;
+      }
       case MODE: {
         RCLCPP_INFO(get_logger(), "Mode packet received: %s", sample.control_mode.c_str());
         auto mode_msg = std_msgs::msg::String();
@@ -617,6 +710,9 @@ class PoseBridgeNode : public rclcpp::Node {
   std::string button_b_topic_;
   std::string button_x_topic_;
   std::string button_y_topic_;
+  std::array<std::string, HAND_COUNT> joystick_topics_;
+  std::array<std::string, HAND_COUNT> joystick_button_topics_;
+  std::string pose_source_mode_topic_;
   std::array<std::string, HAND_COUNT> rate_topics_;  // 添加这行
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr control_mode_publisher_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr calibrate_done_publisher_;
@@ -624,6 +720,11 @@ class PoseBridgeNode : public rclcpp::Node {
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr button_b_publisher_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr button_x_publisher_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr button_y_publisher_;
+  std::array<rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr, HAND_COUNT>
+      joystick_publishers_;
+  std::array<rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr, HAND_COUNT>
+      joystick_button_publishers_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pose_source_mode_publisher_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr absolute_button_a_publisher_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr absolute_button_b_publisher_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr absolute_button_x_publisher_;

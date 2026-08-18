@@ -74,9 +74,14 @@ ros2 topic echo /pico_right_controller/pose
 | 10 | Button | `/pico_right_controller/button_b` |
 | 11 | Button | `/pico_left_controller/button_x` |
 | 12 | Button | `/pico_left_controller/button_y` |
+| 13 | Joystick axes | `/pico_left_controller/joystick` |
+| 14 | Joystick axes | `/pico_right_controller/joystick` |
+| 15 | Joystick click | `/pico_left_controller/button_joystick` |
+| 16 | Joystick click | `/pico_right_controller/button_joystick` |
 
 The bridge also publishes absolute-mode topics under `/vr/head/pose`, `/vr/left/*`,
-`/vr/right/*`, `/vr/control_mode`, `/vr/calibrate_done`, and `/vr/rate`. With the
+`/vr/right/*`, `/vr/control_mode`, `/vr/calibrate_done`, and `/vr/rate`. Pico
+`CFG POSE_MODE` packets are published separately on `/vr/controller_pose_mode`. With the
 `robot1` namespace, these resolve under `/robot1/pico_*` and `/robot1/vr/*`.
 
 ## 6. Common Parameters (Application Level)
@@ -87,6 +92,9 @@ The bridge also publishes absolute-mode topics under `/vr/head/pose`, `/vr/left/
 | `listen_port` | Listening port | `5100` |
 | `publish_tf` | Whether to publish TF | `false` |
 | `frame_id` | Parent frame for published poses | `pico_hmd` |
+| `left_joystick_topic` / `right_joystick_topic` | Left/right joystick-axis topics | `pico_*_controller/joystick` |
+| `left_joystick_button_topic` / `right_joystick_button_topic` | Left/right joystick-click topics | `pico_*_controller/button_joystick` |
+| `pose_source_mode_topic` | AIM/GRIP pose-source status topic | `vr/controller_pose_mode` |
 
 Example (change port and enable TF):
 
