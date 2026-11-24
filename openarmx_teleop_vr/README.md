@@ -4,7 +4,7 @@
 
 `openarmx_teleop_vr` is the ROS 2 VR teleoperation execution node for OpenArmX.
 
-This node subscribes to controller pose, headset pose, grip, trigger, button, and speed-rate topics published by the Pico/VR bridge node, reads robot `/joint_states`, and calls the IK logic inside `openarmx_arm_driver` to compute target joint angles for both arms. It then publishes joint position commands to the left and right `forward_position_controller`.
+This node subscribes to controller pose, headset pose, grip, trigger, and button topics published by the Pico/VR bridge node, reads robot `/joint_states`, and calls the IK logic inside `openarmx_arm_driver` to compute target joint angles for both arms. It then publishes joint position commands to the left and right `forward_position_controller`.
 
 The overall goal is:
 
@@ -96,9 +96,7 @@ ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
 ```bash
 cd <your_workspace>
 source install/setup.bash
-ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
-  controller_pose_mode:=gripper \
-  urdf_path:="$(ros2 pkg prefix openarmx_description)/share/openarmx_description/urdf/robot/openarmx_robot.urdf"
+ros2 launch openarmx_teleop_vr teleop_vr.launch.py
 ```
 
 `gripper` is the default control mode. Each side publishes seven arm joints plus one
@@ -171,8 +169,6 @@ The tables show fully resolved names without a namespace. With
 | `/pico_right_controller/grip` | `std_msgs/Float32` | Right grip, enables right-arm control |
 | `/pico_left_controller/trigger` | `std_msgs/Float32` | Left trigger, controls left gripper |
 | `/pico_right_controller/trigger` | `std_msgs/Float32` | Right trigger, controls right gripper |
-| `/pico_left_controller/rate` | `std_msgs/Float32` | Relative-mode speed rate |
-| `/pico_right_controller/rate` | `std_msgs/Float32` | Relative-mode speed rate |
 | `/pico_right_controller/button_b` | `std_msgs/Bool` | Button B, triggers go-home action |
 | `/pico_left_controller/button_y` | `std_msgs/Bool` | Button Y, triggers hands-up action |
 
@@ -187,7 +183,6 @@ The tables show fully resolved names without a namespace. With
 | `/vr/left/trigger`, `/vr/right/trigger` | `std_msgs/Float32` | Standard-gripper trigger inputs |
 | `/vr/calibrate_done` | `std_msgs/Bool` | Absolute-mode calibration completion |
 | `/vr/control_mode` | `std_msgs/String` | VR control mode |
-| `/vr/rate` | `std_msgs/Float32` | Absolute-mode speed rate |
 
 ### Robot State Input
 
@@ -208,11 +203,11 @@ Parameters are defined in `config/teleop_params.yaml`, and can also be overridde
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `urdf_path` | Injected by launch | Standard grippers use the upstream URDF; empty generates O6 |
+| `urdf_path` | Empty | When empty, selects `openarmx_description` for `gripper` and `openarmx_hand_description` for `hand`; an explicit path takes precedence |
 | `control_rate` | `100.0` | Control loop frequency (Hz) |
 | `grip_threshold` | `0.5` | Grip enable threshold |
-| `max_step_deg_joint1..7` | `4.0` | Per-joint maximum step in slow mode |
-| `fast_max_step_deg_joint1..7` | See config | Per-joint maximum step in fast mode |
+| `max_step_deg_joint1..7` | `4.0` | Legacy parameter; unused for ordinary VR control |
+| `fast_max_step_deg_joint1..7` | See config | Per-joint maximum step for fixed 100% VR control |
 | `step_limit_enable_threshold_deg_joint1..7` | See config | Per-joint error threshold for step limiting |
 | `button_motion_step_deg` | `0.5` | Max joint step per cycle for button actions |
 | `button_motion_done_tolerance_deg` | `1.0` | Target-reached tolerance for button actions |
@@ -247,8 +242,11 @@ not generate O6 finger commands; use Joint Slider, the GUI, or a separate O6 con
 
 ### Speed Rate
 
-When `rate` is close to `1.0`, fast mode is enabled; otherwise slow mode is used. The
-modes use `fast_max_step_deg_joint1..7` and `max_step_deg_joint1..7`, respectively.
+Ordinary VR control always uses the former 100% setting and the existing
+`fast_max_step_deg_joint1..7` limits. It no longer subscribes to rate topics.
+The bridge retains legacy UDP and rate topics; an old APK sending 0.1 cannot
+switch this node to slow mode. Pose mapping and IK settings are unchanged.
+Button actions retain their independent `button_motion_step_deg` limit.
 
 ### Button B
 
@@ -262,9 +260,8 @@ Button Y triggers hands-up action. It currently mainly raises the 4th joint of b
 
 1. Node reports `urdf_path parameter is required` at startup
 
-The launch file generates the O6 model automatically in O6 mode. Standard-gripper mode
-must pass the upstream model as shown in option 1. When running the node without the
-launch file, specify an absolute URDF path manually:
+The launch file selects the model automatically from `controller_pose_mode`. When running
+the node without the launch file, specify an absolute URDF path manually:
 
 ```bash
 ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
@@ -296,7 +293,7 @@ ros2 topic echo /right_forward_position_controller/commands
 
 5. Robot arm jitters or jumps
 
-Reduce the corresponding `max_step_deg_joint1..7` or `fast_max_step_deg_joint1..7`
+Reduce the corresponding `fast_max_step_deg_joint1..7`
 values, and confirm `/joint_states` is continuous and stable. Low Pico controller battery
 or tracking loss may also cause abnormal input poses.
 

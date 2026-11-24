@@ -15,8 +15,9 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <depend>openarmx_description</depend>
-  <depend>openarmx_hand_description</depend>
   <exec_depend>python3-numpy</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
 
   <export>
     <build_type>ament_python</build_type>

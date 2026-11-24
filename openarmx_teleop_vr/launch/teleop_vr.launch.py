@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch OpenArmX VR teleoperation with the composable O6 robot model."""
+"""Launch OpenArmX VR teleoperation with the model matching the controller mode."""
 
 import os
 import tempfile
@@ -10,25 +10,56 @@ from launch.event_handlers import OnShutdown
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-
-from openarmx_hand_description import build_robot_description
+from ament_index_python.packages import get_package_share_directory
 
 
 _temporary_urdfs = set()
 
 
-def _launch_node(context, config_file, urdf_path, controller_pose_mode, robot_namespace):
+def _resolve_urdf_path(context, urdf_path, controller_pose_mode, robot_namespace):
     path = context.perform_substitution(urdf_path).strip()
-    namespace = context.perform_substitution(robot_namespace).strip().strip("/") or None
-    if not path:
-        description = build_robot_description(use_fake_hardware="true")
-        fd, path = tempfile.mkstemp(
-            prefix=f"openarmx_vr_o6_{namespace or 'default'}_",
-            suffix=".urdf",
+    if path:
+        return path
+
+    mode = context.perform_substitution(controller_pose_mode).strip().lower()
+    if mode == "gripper":
+        return os.path.join(
+            get_package_share_directory("openarmx_description"),
+            "urdf",
+            "robot",
+            "openarmx_robot.urdf",
         )
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            stream.write(description)
-        _temporary_urdfs.add(path)
+
+    try:
+        from openarmx_hand_description import build_robot_description
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "controller_pose_mode=hand requires openarmx_hand_description"
+        ) from exc
+
+    namespace = context.perform_substitution(robot_namespace).strip().strip("/")
+    description = build_robot_description(
+        use_fake_hardware="true",
+        node_namespace=namespace,
+    )
+    fd, path = tempfile.mkstemp(
+        prefix=f"openarmx_vr_o6_{namespace or 'default'}_",
+        suffix=".urdf",
+    )
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        stream.write(description)
+    _temporary_urdfs.add(path)
+    return path
+
+
+def _launch_node(context, config_file, urdf_path, controller_pose_mode, robot_namespace):
+    path = _resolve_urdf_path(
+        context,
+        urdf_path,
+        controller_pose_mode,
+        robot_namespace,
+    )
+    namespace = context.perform_substitution(robot_namespace).strip().strip("/") or None
 
     return [Node(
         package="openarmx_teleop_vr",
@@ -74,7 +105,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "urdf_path",
             default_value="",
-            description="Optional URDF path; empty uses openarmx_hand_description.",
+            description=(
+                "Optional URDF path; empty selects openarmx_description for gripper "
+                "or openarmx_hand_description for hand."
+            ),
         ),
         DeclareLaunchArgument(
             "controller_pose_mode",

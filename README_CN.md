@@ -73,9 +73,7 @@ ros2 launch openarmx_bringup openarmx.bimanual.launch.py \
 ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
 
 # 终端 3：VR 遥操作；gripper 是默认控制模式
-ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
-  controller_pose_mode:=gripper \
-  urdf_path:="$(ros2 pkg prefix openarmx_description)/share/openarmx_description/urdf/robot/openarmx_robot.urdf"
+ros2 launch openarmx_teleop_vr teleop_vr.launch.py
 ```
 
 普通夹爪模式每侧发布 7 个机械臂关节和 1 个夹爪命令，VR 扳机控制夹爪。
@@ -117,7 +115,8 @@ O6 模式每侧只发布 7 个机械臂关节命令，不通过 VR 控制手指�
 ## 🧩 关键依赖（摘要）
 
 - 桥接包：`rclcpp`、`geometry_msgs`、`tf2_ros`
-- 遥操作包：`rclpy`、`geometry_msgs`、`sensor_msgs`、`std_msgs`、`openarmx_hand_description`
+- 遥操作包：`rclpy`、`geometry_msgs`、`sensor_msgs`、`std_msgs`、`openarmx_description`
+- O6 灵巧手模式额外需要：`openarmx_hand_description`
 - 运行侧还需要 `openarmx_arm_driver`（详见子包文档）
 
 ## 📚 详细文档入口

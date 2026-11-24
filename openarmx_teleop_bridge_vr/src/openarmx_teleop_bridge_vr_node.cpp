@@ -62,7 +62,7 @@ struct PoseSample {
   bool button_b = false;       // B键状态（右手柄）
   bool button_x = false;       // X键状态（左手柄）
   bool button_y = false;       // Y键状态（左手柄）
-  double rate = 0.1;           // 倍率（0.1或1.0）
+  double rate = 1.0;           // Legacy field; new APK always sends 1.0.
   std::string control_mode{};
   double joystick_x = 0.0;
   double joystick_y = 0.0;
@@ -470,7 +470,7 @@ class PoseBridgeNode : public rclcpp::Node {
 
     double temp_value;
     if (!(iss >> temp_value)) {
-      out_sample.rate = 0.1;
+      out_sample.rate = 1.0;
       out_sample.timestamp_ns = 0;
     } else if (temp_value == 0.1 || temp_value == 1.0) {
       out_sample.rate = temp_value;
@@ -478,10 +478,10 @@ class PoseBridgeNode : public rclcpp::Node {
         out_sample.timestamp_ns = 0;
       }
     } else {
-      out_sample.rate = 0.1;
+      out_sample.rate = 1.0;
       out_sample.timestamp_ns = static_cast<int64_t>(temp_value);
       RCLCPP_WARN(
-          get_logger(), "Invalid rate value detected: %.2f, resetting to 0.1",
+          get_logger(), "Legacy timestamp or invalid rate detected: %.2f, using rate 1.0",
           temp_value);
     }
 

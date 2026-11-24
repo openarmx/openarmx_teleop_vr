@@ -4,7 +4,7 @@
 
 `openarmx_teleop_vr` 是 OpenArmX 的 ROS 2 VR 遥操作执行节点。
 
-该节点订阅 Pico/VR 桥接节点发布的手柄位姿、头显位姿、握把、扳机、按键和速度档位等话题，读取机器人 `/joint_states`，并调用 `openarmx_arm_driver` 内部的 IK 逻辑计算双臂目标关节角，最终向左右臂 `forward_position_controller` 发布关节位置命令。
+该节点订阅 Pico/VR 桥接节点发布的手柄位姿、头显位姿、握把、扳机和按键等话题，读取机器人 `/joint_states`，并调用 `openarmx_arm_driver` 内部的 IK 逻辑计算双臂目标关节角，最终向左右臂 `forward_position_controller` 发布关节位置命令。
 
 整体目标是实现：
 
@@ -96,9 +96,7 @@ ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
 ```bash
 cd <你的工作空间>
 source install/setup.bash
-ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
-  controller_pose_mode:=gripper \
-  urdf_path:="$(ros2 pkg prefix openarmx_description)/share/openarmx_description/urdf/robot/openarmx_robot.urdf"
+ros2 launch openarmx_teleop_vr teleop_vr.launch.py
 ```
 
 `gripper` 是默认控制模式。每侧发布 7 个机械臂关节和 1 个夹爪命令，VR 扳机
@@ -173,8 +171,6 @@ ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
 | `/pico_right_controller/grip` | `std_msgs/Float32` | 右握把，使能右臂控制 |
 | `/pico_left_controller/trigger` | `std_msgs/Float32` | 左扳机，控制左夹爪 |
 | `/pico_right_controller/trigger` | `std_msgs/Float32` | 右扳机，控制右夹爪 |
-| `/pico_left_controller/rate` | `std_msgs/Float32` | 相对模式速度档位 |
-| `/pico_right_controller/rate` | `std_msgs/Float32` | 相对模式速度档位 |
 | `/pico_right_controller/button_b` | `std_msgs/Bool` | B 键，触发回零动作 |
 | `/pico_left_controller/button_y` | `std_msgs/Bool` | Y 键，触发举手动作 |
 
@@ -189,7 +185,6 @@ ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
 | `/vr/left/trigger`、`/vr/right/trigger` | `std_msgs/Float32` | 普通夹爪扳机输入 |
 | `/vr/calibrate_done` | `std_msgs/Bool` | 绝对模式标定完成信号 |
 | `/vr/control_mode` | `std_msgs/String` | VR 控制模式 |
-| `/vr/rate` | `std_msgs/Float32` | 绝对模式速度档位 |
 
 ### 机器人状态输入
 
@@ -210,11 +205,11 @@ ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `urdf_path` | 由 launch 注入 | 普通夹爪指定官方 URDF；O6 留空时自动生成组合 URDF |
+| `urdf_path` | 空 | 留空时根据模式选择模型：`gripper` 使用 `openarmx_description`，`hand` 使用 `openarmx_hand_description`；显式路径优先 |
 | `control_rate` | `100.0` | 控制循环频率，单位 Hz |
 | `grip_threshold` | `0.5` | 握把使能阈值 |
-| `max_step_deg_joint1..7` | `4.0` | 慢速模式各关节每周期最大步进角 |
-| `fast_max_step_deg_joint1..7` | 见配置文件 | 快速模式各关节每周期最大步进角 |
+| `max_step_deg_joint1..7` | `4.0` | 兼容保留参数；普通 VR 控制不使用 |
+| `fast_max_step_deg_joint1..7` | 见配置文件 | 固定 100% 档位各关节每周期最大步进角 |
 | `step_limit_enable_threshold_deg_joint1..7` | 见配置文件 | 各关节启用步进限制的误差阈值 |
 | `button_motion_step_deg` | `0.5` | 按键动作每周期最大关节步进角 |
 | `button_motion_done_tolerance_deg` | `1.0` | 按键动作到达目标的判定容差 |
@@ -249,8 +244,9 @@ controller_pose_mode: "gripper"
 
 ### 速度档位
 
-`rate` 话题值接近 `1.0` 时进入快速模式，否则使用慢速模式。两种模式分别使用
-`fast_max_step_deg_joint1..7` 和 `max_step_deg_joint1..7`。
+普通 VR 遥操作固定为原 100% 档位，使用 `fast_max_step_deg_joint1..7` 步进限幅，
+不再订阅 rate 话题。桥接节点保留旧 UDP 报文与 rate 话题兼容；旧 APK 发来 0.1 也不会降档。
+这不改变位姿映射比例或 IK 参数。回零/举手动作仍使用独立的 `button_motion_step_deg`。
 
 ### B 键
 
@@ -266,8 +262,8 @@ Y 键触发hands up动作，目前主要抬起左右臂第 4 关节，并受关�
 
 1. 节点启动时报 `urdf_path parameter is required`
 
-O6 模式通过 launch 启动时会自动生成组合 URDF。普通夹爪应按照方式一显式传入
-官方普通模型；如果绕过 launch 直接运行节点，也需要手动指定 URDF 绝对路径：
+通过 launch 启动时会根据 `controller_pose_mode` 自动选择模型。如果绕过 launch
+直接运行节点，则需要手动指定 URDF 绝对路径：
 
 ```bash
 ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
@@ -299,7 +295,7 @@ ros2 topic echo /right_forward_position_controller/commands
 
 5. 机械臂动作抖动或跳变
 
-优先降低对应的 `max_step_deg_joint1..7` 或 `fast_max_step_deg_joint1..7`，并确认 `/joint_states` 连续稳定。若 Pico 手柄电量较低或追踪丢失，也可能导致输入位姿异常。
+优先降低对应的 `fast_max_step_deg_joint1..7`，并确认 `/joint_states` 连续稳定。若 Pico 手柄电量较低或追踪丢失，也可能导致输入位姿异常。
 
 6. 夹爪不响应
 

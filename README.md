@@ -73,9 +73,7 @@ ros2 launch openarmx_bringup openarmx.bimanual.launch.py \
 ros2 run openarmx_teleop_bridge_vr openarmx_teleop_bridge_vr_node
 
 # Terminal 3: VR teleop; gripper is the default control mode
-ros2 launch openarmx_teleop_vr teleop_vr.launch.py \
-  controller_pose_mode:=gripper \
-  urdf_path:="$(ros2 pkg prefix openarmx_description)/share/openarmx_description/urdf/robot/openarmx_robot.urdf"
+ros2 launch openarmx_teleop_vr teleop_vr.launch.py
 ```
 
 Standard-gripper mode publishes seven arm joints plus one gripper command per side. VR
@@ -118,7 +116,8 @@ package-specific documentation.
 ## 🧩 Key Dependencies (Summary)
 
 - Bridge package: `rclcpp`, `geometry_msgs`, `tf2_ros`
-- Teleop package: `rclpy`, `geometry_msgs`, `sensor_msgs`, `std_msgs`, `openarmx_hand_description`
+- Teleop package: `rclpy`, `geometry_msgs`, `sensor_msgs`, `std_msgs`, `openarmx_description`
+- O6 dexterous-hand mode additionally requires: `openarmx_hand_description`
 - Runtime also requires `openarmx_arm_driver` (see subpackage docs)
 
 ## 📚 Detailed Documentation Entry Points

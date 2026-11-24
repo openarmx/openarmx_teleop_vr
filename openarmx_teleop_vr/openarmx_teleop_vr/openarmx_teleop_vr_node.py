@@ -21,6 +21,8 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool, Float32, Float64MultiArray, String
 
+from openarmx_teleop_vr.command_publishing import publish_active_commands
+
 
 class OpenArmXTeleopVRNode(Node):
     """ROS node that wraps the closed teleop core."""
@@ -113,8 +115,6 @@ class OpenArmXTeleopVRNode(Node):
         self.joint_states_received = False
 
         self.current_mode = None
-        self.relative_is_full_speed = False
-        self.absolute_is_full_speed = False
         self.ik_enable_override = False
         self.relative_stream_timeout_sec = 0.3
         self._init_pose_state()
@@ -235,7 +235,6 @@ class OpenArmXTeleopVRNode(Node):
         self.declare_parameter("vr_right_trigger_topic", "vr/right/trigger")
         self.declare_parameter("vr_calibrate_topic", "vr/calibrate_done")
         self.declare_parameter("vr_control_mode_topic", "vr/control_mode")
-        self.declare_parameter("vr_rate_topic", "vr/rate")
         self.declare_parameter("button_b_topic", "pico_right_controller/button_b")
         self.declare_parameter("button_y_topic", "pico_left_controller/button_y")
         self.declare_parameter("absolute_button_b_topic", "vr/right/button_b")
@@ -518,9 +517,6 @@ class OpenArmXTeleopVRNode(Node):
         self.absolute_mode_sub = self.create_subscription(
             String, p("vr_control_mode_topic").value, self._absolute_mode_callback, 10, callback_group=self.cb_group
         )
-        self.absolute_rate_sub = self.create_subscription(
-            Float32, p("vr_rate_topic").value, self._absolute_rate_callback, 10, callback_group=self.cb_group
-        )
         self.absolute_button_b_sub = self.create_subscription(
             Bool, p("absolute_button_b_topic").value, self._absolute_button_b_callback, 10, callback_group=self.cb_group
         )
@@ -548,12 +544,6 @@ class OpenArmXTeleopVRNode(Node):
         )
         self.relative_right_trigger_sub = self.create_subscription(
             Float32, "pico_right_controller/trigger", self._relative_right_trigger_callback, 10, callback_group=self.cb_group
-        )
-        self.relative_left_rate_sub = self.create_subscription(
-            Float32, "pico_left_controller/rate", self._relative_rate_callback, 10, callback_group=self.cb_group
-        )
-        self.relative_right_rate_sub = self.create_subscription(
-            Float32, "pico_right_controller/rate", self._relative_rate_callback, 10, callback_group=self.cb_group
         )
         self.relative_button_b_sub = self.create_subscription(
             Bool, p("button_b_topic").value, self._relative_button_b_callback, 10, callback_group=self.cb_group
@@ -620,9 +610,6 @@ class OpenArmXTeleopVRNode(Node):
         else:
             self.get_logger().warn("Absolute calibration skipped - absolute poses are incomplete")
 
-    def _absolute_rate_callback(self, msg: Float32):
-        self.absolute_is_full_speed = float(msg.data) >= 0.999
-
     def _absolute_button_b_callback(self, msg: Bool):
         self._handle_button_edge("absolute_button_b_pressed", "pending_go_home", bool(msg.data))
 
@@ -651,9 +638,6 @@ class OpenArmXTeleopVRNode(Node):
 
     def _relative_right_trigger_callback(self, msg: Float32):
         self.relative_right_trigger = max(0.0, min(1.0, float(msg.data)))
-
-    def _relative_rate_callback(self, msg: Float32):
-        self.relative_is_full_speed = float(msg.data) >= 0.999
 
     def _ik_enable_override_callback(self, msg: Bool):
         self.ik_enable_override = bool(msg.data)
@@ -901,10 +885,7 @@ class OpenArmXTeleopVRNode(Node):
             current_q = self._get_current_joint_positions()
             if current_q is None:
                 return
-            is_full_speed = (
-                self.relative_is_full_speed if result.active_mode == "relative" else self.absolute_is_full_speed
-            )
-            limited_q = self._limit_joint_step(result.target_q, current_q, is_full_speed)
+            limited_q = self._limit_joint_step(result.target_q, current_q, is_full_speed=True)
 
             if result.left_active:
                 left_gripper = (
@@ -929,6 +910,8 @@ class OpenArmXTeleopVRNode(Node):
                 limited_q[7:14].tolist(),
                 left_gripper,
                 right_gripper,
+                left_active=result.left_active,
+                right_active=result.right_active,
             )
         except Exception as exc:
             # self.get_logger().error(f"Control loop error: {exc}")
@@ -998,18 +981,32 @@ class OpenArmXTeleopVRNode(Node):
     def _map_trigger_to_gripper(trigger_value):
         return max(0.0, min(1.0, float(trigger_value))) * 0.04
 
-    def _publish_joint_commands(self, left_joints, right_joints, left_gripper, right_gripper):
+    def _publish_joint_commands(
+        self,
+        left_joints,
+        right_joints,
+        left_gripper,
+        right_gripper,
+        left_active=True,
+        right_active=True,
+    ):
         left_cmd = Float64MultiArray()
         left_cmd.data = list(left_joints)
         if self.publish_gripper_command:
             left_cmd.data.append(float(left_gripper))
-        self.left_cmd_pub.publish(left_cmd)
 
         right_cmd = Float64MultiArray()
         right_cmd.data = list(right_joints)
         if self.publish_gripper_command:
             right_cmd.data.append(float(right_gripper))
-        self.right_cmd_pub.publish(right_cmd)
+        publish_active_commands(
+            self.left_cmd_pub,
+            self.right_cmd_pub,
+            left_cmd,
+            right_cmd,
+            left_active,
+            right_active,
+        )
 
     def _get_current_gripper_command(self, arm: str) -> float:
         joint_name = f"openarmx_{arm}_finger_joint1"
